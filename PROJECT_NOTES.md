@@ -17,6 +17,7 @@ When packaging, include only files changed since the last actual delivery to the
 Prefer vanilla JS with separate CSS/JS/HTML files over a framework, for projects this size.
 PWAs: include an "update available, click to refresh" prompt (custom-styled, not a native browser popup).
 Replace default browser popups (alert/confirm) with custom in-app dialogs, styled to match the app.
+Deliver changed files individually, not zipped together.
 
 ---
 
@@ -34,8 +35,17 @@ person's data stays local to their own device/browser.
   seam for adding an optional backend later (see comment at top of that file).
 - `js/reminders.js` — converts mileage-based service intervals into estimated
   calendar dates, using a 2-question estimate (primary commuter? driving
-  frequency?) taken when a vehicle is added. This is what makes calendar
-  export and simple due/overdue badges possible without real mileage tracking.
+  frequency?) taken when a vehicle is added. Also defines `CATEGORY_SCHEDULES`
+  — recommended maintenance checklists that vary by powertrain (gasoline /
+  diesel / hybrid / electric / unknown), e.g. electric vehicles skip oil
+  changes and get an EV battery health check instead. `getVehicleChecklist()`
+  returns every recommended item for a vehicle, including ones never logged
+  yet (shown as "Not logged yet"), which is what drives the "where do I
+  stand on this vehicle" checklist view — not just overdue items.
+- `js/vehicle-lookup.js` — optional VIN decoding via NHTSA's free vPIC API
+  (no key required). Auto-fills year/make/model and detects powertrain
+  category when a VIN is provided; purely additive, setup works fine without
+  one via the manual "vehicle type" question.
 - `js/gauge.js` — the 270° arc gauge, the app's one signature visual element,
   reused at both dashboard and detail level.
 - `js/ics.js` — generates `.ics` calendar files. This is the durable reminder
@@ -44,8 +54,14 @@ person's data stays local to their own device/browser.
   granted.
 - `js/dialogs.js` — custom confirm/alert modals (Promise-based), replacing
   native `confirm()`/`alert()`.
+- `js/banner.js` — shared helper for small dismissible banners stacked at
+  the bottom of the screen, used by both `pwa.js` and `install-prompt.js`.
 - `js/pwa.js` + `service-worker.js` — installable PWA with offline support and
   a custom "update available" banner (not the browser's native update flow).
+- `js/install-prompt.js` — custom "Install Carfolio" banner. Captures
+  Chrome/Edge/Android's `beforeinstallprompt` to show our own styled button;
+  shows a manual "tap Share" hint on iOS Safari, which never exposes a
+  programmatic install prompt at all. Dismissal is remembered for 14 days.
 
 ## Key decisions and why
 
@@ -53,6 +69,13 @@ person's data stays local to their own device/browser.
   closed) requires a server to trigger the push at the right time — there's
   no way around that with a static site. Decided against adding a backend
   just for this; `.ics` calendar export solves "remind me later" without one.
+- **No manufacturer-exact maintenance schedules.** There's no free, durable
+  API for that — it lives in PDF owner's manuals, not structured data, and
+  scraping manufacturer sites would be exactly the kind of fragile
+  dependency this project avoids. Instead: NHTSA's free VIN decoder (stable
+  government API) detects powertrain category, and `CATEGORY_SCHEDULES` in
+  `reminders.js` gives category-appropriate defaults (gas/diesel/hybrid/EV).
+  Honest tradeoff — general guidance, not the owner's exact numbers.
 - **No accounts, no shared/synced data.** Each family member's data lives only
   in their own browser. Deliberate simplicity tradeoff — see manual JSON
   backup/restore in the Backup modal as the mitigation for browser data loss.
@@ -72,11 +95,18 @@ person's data stays local to their own device/browser.
 
 ## Current state
 
-Core app built and locally sanity-checked (JS syntax-checked with `node --check`,
-reminder date-math logic verified with a throwaway test script, not committed).
-Not yet deployed to GitHub Pages by the user. PWA layer (manifest, service
-worker, install icons, update banner) and custom dialogs added but not yet
-tested in an actual browser/device by the user.
+Deployed to GitHub Pages (bcrossley712/carfolio), confirmed working —
+PWA installs correctly on Android. Repo contents verified byte-for-byte
+against what was delivered.
+
+Just added: VIN-aware vehicle setup wizard (2 steps: details+VIN, then
+maintenance checklist confirmation), category-based recommended checklists,
+and a custom install-prompt banner. Logic verified with throwaway test
+scripts (not committed) — category schedules, checklist status transitions,
+and VIN powertrain categorization all tested; live NHTSA API call itself
+couldn't be tested from the sandbox (domain not in its network allowlist)
+but was verified with mocked responses matching real vPIC's response shape.
+Not yet tested by the user in an actual browser.
 
 Icons were generated programmatically (Pillow) from the in-app brand mark
 (circle + tick + amber needle on slate background) rather than hand-designed —

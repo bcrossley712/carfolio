@@ -1,5 +1,6 @@
 // ============================================================================
-// reminders.js — turns "every 5,000 miles" into an actual date.
+// reminders.js — turns "every 5,000 miles" into an actual date, and defines
+// what's recommended for a vehicle based on its powertrain category.
 //
 // Most people don't know their exact annual mileage, so we estimate it from
 // two quick questions asked when a vehicle is added (primary commuter? how
@@ -7,25 +8,117 @@
 // into a calendar date under the hood, which is what makes calendar export
 // and simple "due soon" badges possible without ever asking for real-time
 // GPS or odometer syncing.
+//
+// Service intervals below are informed general guidance, not a specific
+// manufacturer's published schedule (no free, durable API provides that —
+// see PROJECT_NOTES.md for why). They vary by powertrain category, which
+// is detected via optional VIN decode (see vehicle-lookup.js) or asked
+// directly if no VIN is provided.
 // ============================================================================
 
-// Common service types with sensible default intervals.
-// intervalMiles / intervalMonths: whichever comes first triggers the reminder.
-export const SERVICE_TYPES = [
-  { id: 'oil_change', name: 'Oil change', icon: '🛢️', intervalMiles: 5000, intervalMonths: 6 },
-  { id: 'tire_rotation', name: 'Tire rotation', icon: '🔄', intervalMiles: 6000, intervalMonths: 6 },
-  { id: 'air_filter', name: 'Air filter', icon: '💨', intervalMiles: 15000, intervalMonths: 12 },
-  { id: 'brake_service', name: 'Brake inspection/service', icon: '🛑', intervalMiles: 12000, intervalMonths: 12 },
-  { id: 'battery', name: 'Battery check', icon: '🔋', intervalMiles: null, intervalMonths: 24 },
-  { id: 'coolant', name: 'Coolant flush', icon: '❄️', intervalMiles: 30000, intervalMonths: 24 },
-  { id: 'wiper_blades', name: 'Wiper blades', icon: '🌧️', intervalMiles: null, intervalMonths: 12 },
-  { id: 'registration', name: 'Registration renewal', icon: '📋', intervalMiles: null, intervalMonths: 12 },
-  { id: 'inspection', name: 'State inspection / emissions', icon: '✅', intervalMiles: null, intervalMonths: 12 },
-  { id: 'custom', name: 'Custom service', icon: '🔧', intervalMiles: null, intervalMonths: null },
-];
+// Catalog of all known service types — names/icons only, no intervals here.
+// Intervals live in CATEGORY_SCHEDULES since they vary by vehicle type.
+export const SERVICE_CATALOG = {
+  oil_change: { name: 'Oil change', icon: '🛢️' },
+  tire_rotation: { name: 'Tire rotation', icon: '🔄' },
+  air_filter: { name: 'Engine air filter', icon: '💨' },
+  cabin_air_filter: { name: 'Cabin air filter', icon: '🌬️' },
+  brake_service: { name: 'Brake inspection/service', icon: '🛑' },
+  battery_12v: { name: '12V battery check', icon: '🔋' },
+  ev_battery_health: { name: 'EV/hybrid battery health check', icon: '🔌' },
+  coolant: { name: 'Coolant flush', icon: '❄️' },
+  diesel_fuel_filter: { name: 'Diesel fuel filter', icon: '⛽' },
+  wiper_blades: { name: 'Wiper blades', icon: '🌧️' },
+  registration: { name: 'Registration renewal', icon: '📋' },
+  inspection: { name: 'State inspection / emissions', icon: '✅' },
+  custom: { name: 'Custom service', icon: '🔧' },
+};
+
+// The full dropdown list for logging a service (every catalog entry).
+export const SERVICE_TYPES = Object.entries(SERVICE_CATALOG).map(([id, t]) => ({ id, ...t }));
 
 export function getServiceType(id) {
-  return SERVICE_TYPES.find(t => t.id === id) || SERVICE_TYPES[SERVICE_TYPES.length - 1];
+  const entry = SERVICE_CATALOG[id];
+  return entry ? { id, ...entry } : { id, ...SERVICE_CATALOG.custom };
+}
+
+// Recommended schedule per powertrain category. 'unknown' is the fallback
+// used for vehicles added before this feature existed, or when someone
+// picks "not sure" — it matches the original generic defaults so existing
+// vehicles behave exactly as before.
+export const CATEGORY_SCHEDULES = {
+  gasoline: [
+    { typeId: 'oil_change', intervalMiles: 5000, intervalMonths: 6 },
+    { typeId: 'tire_rotation', intervalMiles: 6000, intervalMonths: 6 },
+    { typeId: 'air_filter', intervalMiles: 15000, intervalMonths: 12 },
+    { typeId: 'cabin_air_filter', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'brake_service', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'battery_12v', intervalMiles: null, intervalMonths: 24 },
+    { typeId: 'coolant', intervalMiles: 30000, intervalMonths: 24 },
+    { typeId: 'wiper_blades', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'registration', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'inspection', intervalMiles: null, intervalMonths: 12 },
+  ],
+  diesel: [
+    { typeId: 'oil_change', intervalMiles: 7500, intervalMonths: 6 },
+    { typeId: 'tire_rotation', intervalMiles: 6000, intervalMonths: 6 },
+    { typeId: 'air_filter', intervalMiles: 15000, intervalMonths: 12 },
+    { typeId: 'cabin_air_filter', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'diesel_fuel_filter', intervalMiles: 15000, intervalMonths: 12 },
+    { typeId: 'brake_service', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'battery_12v', intervalMiles: null, intervalMonths: 24 },
+    { typeId: 'coolant', intervalMiles: 30000, intervalMonths: 24 },
+    { typeId: 'wiper_blades', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'registration', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'inspection', intervalMiles: null, intervalMonths: 12 },
+  ],
+  hybrid: [
+    { typeId: 'oil_change', intervalMiles: 7500, intervalMonths: 6 },
+    { typeId: 'tire_rotation', intervalMiles: 6000, intervalMonths: 6 },
+    { typeId: 'air_filter', intervalMiles: 15000, intervalMonths: 12 },
+    { typeId: 'cabin_air_filter', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'brake_service', intervalMiles: 20000, intervalMonths: 24 },
+    { typeId: 'battery_12v', intervalMiles: null, intervalMonths: 24 },
+    { typeId: 'ev_battery_health', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'coolant', intervalMiles: 30000, intervalMonths: 24 },
+    { typeId: 'wiper_blades', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'registration', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'inspection', intervalMiles: null, intervalMonths: 12 },
+  ],
+  electric: [
+    { typeId: 'tire_rotation', intervalMiles: 6000, intervalMonths: 6 },
+    { typeId: 'cabin_air_filter', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'brake_service', intervalMiles: 20000, intervalMonths: 24 },
+    { typeId: 'battery_12v', intervalMiles: null, intervalMonths: 24 },
+    { typeId: 'ev_battery_health', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'coolant', intervalMiles: 50000, intervalMonths: 48 },
+    { typeId: 'wiper_blades', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'registration', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'inspection', intervalMiles: null, intervalMonths: 12 },
+  ],
+  unknown: [
+    { typeId: 'oil_change', intervalMiles: 5000, intervalMonths: 6 },
+    { typeId: 'tire_rotation', intervalMiles: 6000, intervalMonths: 6 },
+    { typeId: 'air_filter', intervalMiles: 15000, intervalMonths: 12 },
+    { typeId: 'brake_service', intervalMiles: 12000, intervalMonths: 12 },
+    { typeId: 'battery_12v', intervalMiles: null, intervalMonths: 24 },
+    { typeId: 'coolant', intervalMiles: 30000, intervalMonths: 24 },
+    { typeId: 'wiper_blades', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'registration', intervalMiles: null, intervalMonths: 12 },
+    { typeId: 'inspection', intervalMiles: null, intervalMonths: 12 },
+  ],
+};
+
+export function getCategorySchedule(powertrain) {
+  return CATEGORY_SCHEDULES[powertrain] || CATEGORY_SCHEDULES.unknown;
+}
+
+function getDefaultInterval(vehicle, typeId) {
+  const schedule = getCategorySchedule(vehicle.powertrain);
+  const entry = schedule.find(s => s.typeId === typeId);
+  return entry
+    ? { intervalMiles: entry.intervalMiles, intervalMonths: entry.intervalMonths }
+    : { intervalMiles: null, intervalMonths: 12 };
 }
 
 // Estimated annual mileage based on the quick questionnaire.
@@ -69,8 +162,9 @@ function daysBetween(a, b) {
 // - status: 'ok' | 'soon' | 'overdue'
 export function computeReminder(vehicle, serviceTypeId, lastService) {
   const type = getServiceType(serviceTypeId);
-  const intervalMiles = lastService?.intervalMiles ?? type.intervalMiles;
-  const intervalMonths = lastService?.intervalMonths ?? type.intervalMonths;
+  const defaults = getDefaultInterval(vehicle, serviceTypeId);
+  const intervalMiles = lastService?.intervalMiles ?? defaults.intervalMiles;
+  const intervalMonths = lastService?.intervalMonths ?? defaults.intervalMonths;
 
   const lastDate = lastService?.date || vehicle.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
   const lastMileage = lastService?.mileage ?? vehicle.currentOdometer ?? 0;
@@ -121,8 +215,7 @@ export function computeReminder(vehicle, serviceTypeId, lastService) {
 
 // Build the list of "next due" reminders for a vehicle: one per service type
 // that has ever been logged, based on the most recent entry of each type.
-// Types never logged aren't shown until first logged, keeping the list
-// relevant instead of a wall of defaults.
+// Used for the dashboard gauge, which needs a real "last serviced" date.
 export function getVehicleReminders(vehicle) {
   const byType = {};
   for (const s of vehicle.services) {
@@ -138,6 +231,32 @@ export function getPrimaryReminder(vehicle) {
   const reminders = getVehicleReminders(vehicle);
   if (reminders.length === 0) return null;
   return reminders.slice().sort((a, b) => b.percentElapsed - a.percentElapsed)[0];
+}
+
+// The full maintenance checklist for a vehicle: every recommended service,
+// including ones never logged yet (shown as "not started" rather than
+// omitted entirely) — this is what answers "where do I stand on maintaining
+// this vehicle," not just "what's overdue."
+export function getVehicleChecklist(vehicle) {
+  const recommendedIds = (vehicle.recommendedServiceIds && vehicle.recommendedServiceIds.length)
+    ? vehicle.recommendedServiceIds
+    : getCategorySchedule(vehicle.powertrain).map(s => s.typeId);
+
+  const items = recommendedIds.map(typeId => {
+    const logs = vehicle.services.filter(s => s.typeId === typeId);
+    if (logs.length === 0) {
+      const catalog = getServiceType(typeId);
+      return { typeId, typeName: catalog.name, icon: catalog.icon, status: 'unlogged', percentElapsed: 0 };
+    }
+    const last = logs.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    return computeReminder(vehicle, typeId, last);
+  });
+
+  return items.sort((a, b) => {
+    if (a.status === 'unlogged' && b.status !== 'unlogged') return 1;
+    if (b.status === 'unlogged' && a.status !== 'unlogged') return -1;
+    return b.percentElapsed - a.percentElapsed;
+  });
 }
 
 export function formatDueDate(dateStr) {

@@ -1,11 +1,14 @@
 import { store } from './store.js';
-import { SERVICE_TYPES, getServiceType, getVehicleReminders, getPrimaryReminder, formatDueDate, estimateAnnualMileage } from './reminders.js';
+import { SERVICE_TYPES, getServiceType, getVehicleChecklist, getPrimaryReminder, formatDueDate, estimateAnnualMileage, getCategorySchedule } from './reminders.js';
 import { renderGauge, gaugeLabel } from './gauge.js';
 import { buildICS, downloadICS } from './ics.js';
 import { confirmDialog, alertDialog } from './dialogs.js';
 import { initPWA } from './pwa.js';
+import { initInstallPrompt } from './install-prompt.js';
+import { decodeVIN, isValidVINFormat } from './vehicle-lookup.js';
 
 initPWA();
+initInstallPrompt();
 
 const appEl = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -99,17 +102,18 @@ function renderVehicleDetail(vehicleId) {
     return;
   }
 
-  const reminders = getVehicleReminders(vehicle).sort((a, b) => b.percentElapsed - a.percentElapsed);
+  const checklist = getVehicleChecklist(vehicle);
   const history = vehicle.services.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
   const sub = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
   const annualEstimate = estimateAnnualMileage(vehicle);
+  const powertrainLabel = { gasoline: 'Gasoline', diesel: 'Diesel', hybrid: 'Hybrid', electric: 'Electric' }[vehicle.powertrain];
 
   appEl.innerHTML = `
     <a href="#/" class="back-link">&larr; All vehicles</a>
     <div class="detail-header">
       <div>
         <h1 class="detail-title">${escapeHTML(vehicle.name)}</h1>
-        <p class="detail-sub">${escapeHTML(sub || 'No details added')} &middot; ${vehicle.currentOdometer.toLocaleString()} mi as of ${formatDueDate(vehicle.odometerAsOfDate)} &middot; ~${annualEstimate.toLocaleString()} mi/yr estimated</p>
+        <p class="detail-sub">${escapeHTML(sub || 'No details added')}${powertrainLabel ? ` &middot; ${powertrainLabel}` : ''} &middot; ${vehicle.currentOdometer.toLocaleString()} mi as of ${formatDueDate(vehicle.odometerAsOfDate)} &middot; ~${annualEstimate.toLocaleString()} mi/yr estimated</p>
       </div>
       <div class="detail-actions">
         <button class="btn btn-secondary" id="edit-vehicle-btn">Edit vehicle</button>
@@ -118,10 +122,10 @@ function renderVehicleDetail(vehicleId) {
     </div>
 
     <div class="section">
-      <h3 class="section-title">Upcoming reminders</h3>
-      ${reminders.length === 0
-        ? `<p class="field-hint">Log a service below and Carfolio will start estimating what's due next.</p>`
-        : `<div class="reminder-list">${reminders.map(r => reminderRowHTML(vehicle, r)).join('')}</div>`
+      <h3 class="section-title">Maintenance checklist</h3>
+      ${checklist.length === 0
+        ? `<p class="field-hint">No recommended services set for this vehicle yet.</p>`
+        : `<div class="reminder-list">${checklist.map(r => reminderRowHTML(vehicle, r)).join('')}</div>`
       }
     </div>
 
@@ -153,10 +157,10 @@ function renderVehicleDetail(vehicleId) {
     }
   });
 
-  reminders.forEach(r => {
-    const btn = document.getElementById(`ics-${r.typeId}`);
-    if (btn) {
-      btn.addEventListener('click', () => {
+  checklist.forEach(r => {
+    const icsBtn = document.getElementById(`ics-${r.typeId}`);
+    if (icsBtn) {
+      icsBtn.addEventListener('click', () => {
         const ics = buildICS({
           title: `${vehicle.name}: ${r.typeName}`,
           description: `Estimated by Carfolio based on your driving habits. Update the date in your calendar if you know the exact due date.`,
@@ -165,6 +169,10 @@ function renderVehicleDetail(vehicleId) {
         });
         downloadICS(`${vehicle.name.replace(/\s+/g, '_')}-${r.typeId}.ics`, ics);
       });
+    }
+    const logBtn = document.getElementById(`log-now-${r.typeId}`);
+    if (logBtn) {
+      logBtn.addEventListener('click', () => openLogServiceModal(vehicle.id, r.typeId));
     }
   });
 
@@ -183,6 +191,23 @@ function renderVehicleDetail(vehicleId) {
 }
 
 function reminderRowHTML(vehicle, r) {
+  if (r.status === 'unlogged') {
+    return `
+      <div class="reminder-row">
+        <div class="gauge-wrap" style="width:48px;height:48px;">
+          ${renderGauge(0, 'empty')}
+        </div>
+        <div class="reminder-row-info">
+          <div class="reminder-row-name">${r.icon} ${escapeHTML(r.typeName)}</div>
+          <div class="reminder-row-due">Not logged yet</div>
+        </div>
+        <div class="reminder-row-actions">
+          <button class="btn btn-secondary" id="log-now-${r.typeId}">Log now</button>
+        </div>
+      </div>
+    `;
+  }
+
   const dueClass = r.status === 'overdue' ? 'due-rust' : r.status === 'soon' ? 'due-amber' : '';
   const dueText = r.status === 'overdue' ? `Overdue since ${formatDueDate(r.dueDate)}` : `Due ${formatDueDate(r.dueDate)}`;
   const mileageText = r.estimatedDueMileage ? ` (~${r.estimatedDueMileage.toLocaleString()} mi)` : '';
@@ -247,64 +272,134 @@ function closeModal() {
 // ============================================================================
 // Add / Edit vehicle modal (with the mileage-estimating questionnaire)
 // ============================================================================
+function powertrainOptionsHTML(selected) {
+  const options = [
+    { value: 'gasoline', label: 'Gasoline' },
+    { value: 'diesel', label: 'Diesel' },
+    { value: 'hybrid', label: 'Hybrid' },
+    { value: 'electric', label: 'Electric' },
+    { value: '', label: "Not sure" },
+  ];
+  return options.map(o => `
+    <label class="choice-option">
+      <input type="radio" name="powertrain" value="${o.value}" ${o.value === (selected || '') ? 'checked' : ''} /> ${o.label}
+    </label>
+  `).join('');
+}
+
+function checklistStepHTML(powertrainValue) {
+  const schedule = getCategorySchedule(powertrainValue || 'unknown');
+  return schedule.map(entry => {
+    const type = getServiceType(entry.typeId);
+    const intervalHint = [
+      entry.intervalMiles ? `~${entry.intervalMiles.toLocaleString()} mi` : null,
+      entry.intervalMonths ? `${entry.intervalMonths} mo` : null,
+    ].filter(Boolean).join(' / ');
+    return `
+      <label class="choice-option">
+        <input type="checkbox" name="checklist-item" value="${entry.typeId}" checked />
+        ${type.icon} ${escapeHTML(type.name)}
+        <span class="field-hint" style="margin:0 0 0 auto;">${intervalHint}</span>
+      </label>
+    `;
+  }).join('');
+}
+
 function openAddVehicleModal() {
+  let step = 1;
+
   openModal(`
     <div class="modal-header">
       <h2 class="modal-title">Add a vehicle</h2>
       <button class="modal-close" id="modal-close">&times;</button>
     </div>
+    <div class="step-indicator">
+      <div class="step-dot active" id="step-dot-1"></div>
+      <div class="step-dot" id="step-dot-2"></div>
+    </div>
     <form id="vehicle-form">
-      <div class="field">
-        <label for="v-name">Nickname</label>
-        <input type="text" id="v-name" placeholder="e.g. Mom's Civic" required />
-      </div>
-      <div class="field-row">
+      <div id="wizard-step-1">
         <div class="field">
-          <label for="v-year">Year</label>
-          <input type="text" id="v-year" placeholder="2019" inputmode="numeric" />
+          <label for="v-name">Nickname</label>
+          <input type="text" id="v-name" placeholder="e.g. Mom's Civic" required />
         </div>
+
         <div class="field">
-          <label for="v-make">Make</label>
-          <input type="text" id="v-make" placeholder="Honda" />
+          <label for="v-vin">VIN (optional)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="v-vin" placeholder="17-character VIN" maxlength="17" style="flex:1; text-transform:uppercase;" />
+            <button type="button" class="btn btn-secondary" id="vin-decode-btn">Look up</button>
+          </div>
+          <p class="field-hint" id="vin-status"></p>
         </div>
-      </div>
-      <div class="field">
-        <label for="v-model">Model</label>
-        <input type="text" id="v-model" placeholder="Civic" />
-      </div>
 
-      <div class="field">
-        <label>Is this the primary commuter?</label>
-        <div class="choice-group" id="commuter-group">
-          <label class="choice-option"><input type="radio" name="commuter" value="yes" /> Yes, driven most days</label>
-          <label class="choice-option"><input type="radio" name="commuter" value="no" checked /> No, it's a secondary vehicle</label>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>How often does it get driven?</label>
-        <div class="choice-group" id="frequency-group">
-          <label class="choice-option"><input type="radio" name="frequency" value="daily" /> Daily or almost daily</label>
-          <label class="choice-option"><input type="radio" name="frequency" value="average" checked /> A few times a week</label>
-          <label class="choice-option"><input type="radio" name="frequency" value="rarely" /> Occasionally / weekends only</label>
-        </div>
-        <p class="field-hint">We use this to estimate mileage over time, so reminders can be based on a real date &mdash; no need to track exact miles.</p>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label for="v-odometer">Current odometer (mi)</label>
-          <input type="number" id="v-odometer" placeholder="45000" min="0" />
+        <div class="field-row">
+          <div class="field">
+            <label for="v-year">Year</label>
+            <input type="text" id="v-year" placeholder="2019" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="v-make">Make</label>
+            <input type="text" id="v-make" placeholder="Honda" />
+          </div>
         </div>
         <div class="field">
-          <label for="v-odometer-date">As of</label>
-          <input type="date" id="v-odometer-date" value="${todayStr()}" />
+          <label for="v-model">Model</label>
+          <input type="text" id="v-model" placeholder="Civic" />
+        </div>
+
+        <div class="field">
+          <label>Vehicle type</label>
+          <div class="choice-group" id="powertrain-group">
+            ${powertrainOptionsHTML(null)}
+          </div>
+          <p class="field-hint" id="powertrain-hint">Used to recommend the right maintenance checklist. A VIN look-up will fill this in automatically.</p>
+        </div>
+
+        <div class="field">
+          <label>Is this the primary commuter?</label>
+          <div class="choice-group" id="commuter-group">
+            <label class="choice-option"><input type="radio" name="commuter" value="yes" /> Yes, driven most days</label>
+            <label class="choice-option"><input type="radio" name="commuter" value="no" checked /> No, it's a secondary vehicle</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>How often does it get driven?</label>
+          <div class="choice-group" id="frequency-group">
+            <label class="choice-option"><input type="radio" name="frequency" value="daily" /> Daily or almost daily</label>
+            <label class="choice-option"><input type="radio" name="frequency" value="average" checked /> A few times a week</label>
+            <label class="choice-option"><input type="radio" name="frequency" value="rarely" /> Occasionally / weekends only</label>
+          </div>
+          <p class="field-hint">We use this to estimate mileage over time, so reminders can be based on a real date &mdash; no need to track exact miles.</p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="v-odometer">Current odometer (mi)</label>
+            <input type="number" id="v-odometer" placeholder="45000" min="0" />
+          </div>
+          <div class="field">
+            <label for="v-odometer-date">As of</label>
+            <input type="date" id="v-odometer-date" value="${todayStr()}" />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancel-btn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="next-btn">Next: review checklist</button>
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" id="cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Add vehicle</button>
+      <div id="wizard-step-2" style="display:none;">
+        <p class="field-hint" style="margin-bottom:14px;">Recommended for this vehicle type &mdash; uncheck anything you don't want tracked. You can adjust individual items anytime after adding the vehicle.</p>
+        <div class="choice-group" id="checklist-group">
+          ${checklistStepHTML(null)}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="back-btn">Back</button>
+          <button type="submit" class="btn btn-primary">Add vehicle</button>
+        </div>
       </div>
     </form>
   `);
@@ -312,13 +407,68 @@ function openAddVehicleModal() {
   wireChoiceGroups();
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('cancel-btn').addEventListener('click', closeModal);
+
+  const vinInput = document.getElementById('v-vin');
+  const vinStatus = document.getElementById('vin-status');
+  document.getElementById('vin-decode-btn').addEventListener('click', async () => {
+    const vin = vinInput.value.trim();
+    if (!isValidVINFormat(vin)) {
+      vinStatus.textContent = "That doesn't look like a valid 17-character VIN.";
+      return;
+    }
+    vinStatus.textContent = 'Looking it up…';
+    try {
+      const result = await decodeVIN(vin);
+      document.getElementById('v-year').value = result.year || document.getElementById('v-year').value;
+      document.getElementById('v-make').value = result.make || document.getElementById('v-make').value;
+      document.getElementById('v-model').value = result.model || document.getElementById('v-model').value;
+      if (result.powertrain) {
+        const radio = document.querySelector(`input[name="powertrain"][value="${result.powertrain}"]`);
+        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
+        vinStatus.textContent = `Found it — filled in details and detected: ${result.powertrain}.`;
+      } else {
+        vinStatus.textContent = 'Found the vehicle, but could not determine the powertrain — please select it below.';
+      }
+    } catch (err) {
+      vinStatus.textContent = err.message || 'Could not look up that VIN.';
+    }
+  });
+
+  document.getElementById('next-btn').addEventListener('click', () => {
+    if (!document.getElementById('v-name').value.trim()) {
+      document.getElementById('v-name').focus();
+      return;
+    }
+    const powertrain = document.querySelector('input[name="powertrain"]:checked')?.value || null;
+    document.getElementById('checklist-group').innerHTML = checklistStepHTML(powertrain);
+    wireChoiceGroups();
+    document.getElementById('wizard-step-1').style.display = 'none';
+    document.getElementById('wizard-step-2').style.display = 'block';
+    document.getElementById('step-dot-1').classList.remove('active');
+    document.getElementById('step-dot-2').classList.add('active');
+    step = 2;
+  });
+
+  document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('wizard-step-1').style.display = 'block';
+    document.getElementById('wizard-step-2').style.display = 'none';
+    document.getElementById('step-dot-1').classList.add('active');
+    document.getElementById('step-dot-2').classList.remove('active');
+    step = 1;
+  });
+
   document.getElementById('vehicle-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    if (step !== 2) return; // Enter key on step 1 shouldn't submit early
+    const recommendedServiceIds = Array.from(document.querySelectorAll('input[name="checklist-item"]:checked')).map(i => i.value);
     const vehicle = store.addVehicle({
       name: document.getElementById('v-name').value.trim() || 'My vehicle',
+      vin: vinInput.value.trim(),
       year: document.getElementById('v-year').value.trim(),
       make: document.getElementById('v-make').value.trim(),
       model: document.getElementById('v-model').value.trim(),
+      powertrain: document.querySelector('input[name="powertrain"]:checked')?.value || null,
+      recommendedServiceIds,
       isPrimaryCommuter: document.querySelector('input[name="commuter"]:checked').value === 'yes',
       drivingFrequency: document.querySelector('input[name="frequency"]:checked').value,
       currentOdometer: document.getElementById('v-odometer').value || 0,
@@ -356,6 +506,16 @@ function openEditVehicleModal(vehicleId) {
       <div class="field">
         <label for="v-model">Model</label>
         <input type="text" id="v-model" value="${escapeAttr(vehicle.model)}" />
+      </div>
+      <div class="field">
+        <label for="v-vin">VIN (optional)</label>
+        <input type="text" id="v-vin" value="${escapeAttr(vehicle.vin || '')}" maxlength="17" style="text-transform:uppercase;" />
+      </div>
+      <div class="field">
+        <label>Vehicle type</label>
+        <div class="choice-group" id="powertrain-group">
+          ${powertrainOptionsHTML(vehicle.powertrain)}
+        </div>
       </div>
       <div class="field">
         <label>Is this the primary commuter?</label>
@@ -396,6 +556,8 @@ function openEditVehicleModal(vehicleId) {
     e.preventDefault();
     store.updateVehicle(vehicleId, {
       name: document.getElementById('v-name').value.trim() || vehicle.name,
+      vin: document.getElementById('v-vin').value.trim(),
+      powertrain: document.querySelector('input[name="powertrain"]:checked')?.value || null,
       year: document.getElementById('v-year').value.trim(),
       make: document.getElementById('v-make').value.trim(),
       model: document.getElementById('v-model').value.trim(),
@@ -425,7 +587,7 @@ function wireChoiceGroups() {
 // ============================================================================
 // Log service modal
 // ============================================================================
-function openLogServiceModal(vehicleId) {
+function openLogServiceModal(vehicleId, preselectTypeId) {
   const vehicle = store.getVehicle(vehicleId);
   if (!vehicle) return;
 
@@ -438,7 +600,7 @@ function openLogServiceModal(vehicleId) {
       <div class="field">
         <label for="s-type">Service type</label>
         <select id="s-type">
-          ${SERVICE_TYPES.map(t => `<option value="${t.id}">${t.icon} ${t.name}</option>`).join('')}
+          ${SERVICE_TYPES.map(t => `<option value="${t.id}" ${t.id === preselectTypeId ? 'selected' : ''}>${t.icon} ${t.name}</option>`).join('')}
         </select>
       </div>
       <div class="field" id="custom-name-field" style="display:none;">
@@ -472,9 +634,11 @@ function openLogServiceModal(vehicleId) {
 
   const typeSelect = document.getElementById('s-type');
   const customField = document.getElementById('custom-name-field');
-  typeSelect.addEventListener('change', () => {
+  const syncCustomField = () => {
     customField.style.display = typeSelect.value === 'custom' ? 'block' : 'none';
-  });
+  };
+  typeSelect.addEventListener('change', syncCustomField);
+  syncCustomField();
 
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('cancel-btn').addEventListener('click', closeModal);
@@ -490,8 +654,6 @@ function openLogServiceModal(vehicleId) {
       mileage: document.getElementById('s-mileage').value,
       cost: document.getElementById('s-cost').value,
       notes: document.getElementById('s-notes').value.trim(),
-      intervalMiles: type.intervalMiles,
-      intervalMonths: type.intervalMonths,
     });
     closeModal();
     renderVehicleDetail(vehicleId);

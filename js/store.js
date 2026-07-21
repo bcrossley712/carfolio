@@ -66,6 +66,9 @@ export const store = {
       year: vehicle.year || '',
       make: vehicle.make || '',
       model: vehicle.model || '',
+      vin: vehicle.vin || '',
+      powertrain: vehicle.powertrain || null, // 'gasoline' | 'diesel' | 'hybrid' | 'electric' | null (unknown)
+      recommendedServiceIds: vehicle.recommendedServiceIds || [],
       isPrimaryCommuter: !!vehicle.isPrimaryCommuter,
       drivingFrequency: vehicle.drivingFrequency || 'average', // 'daily' | 'average' | 'rarely'
       currentOdometer: Number(vehicle.currentOdometer) || 0,

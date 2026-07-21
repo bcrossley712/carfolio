@@ -5,21 +5,17 @@
 // this is a small dismissible banner styled to match the rest of the app.
 // ============================================================================
 
-function showUpdateBanner(onRefresh) {
-  if (document.getElementById('update-banner')) return; // already showing
+import { showBanner } from './banner.js';
 
-  const banner = document.createElement('div');
-  banner.id = 'update-banner';
-  banner.className = 'update-banner';
-  banner.innerHTML = `
+function showUpdateBanner(onRefresh) {
+  showBanner('update-banner', `
     <span>A new version of Carfolio is available.</span>
     <button class="btn btn-primary" id="update-refresh-btn">Refresh</button>
     <button class="btn btn-ghost" id="update-dismiss-btn" aria-label="Dismiss">&times;</button>
-  `;
-  document.body.appendChild(banner);
-
-  document.getElementById('update-refresh-btn').addEventListener('click', onRefresh);
-  document.getElementById('update-dismiss-btn').addEventListener('click', () => banner.remove());
+  `, (el) => {
+    el.querySelector('#update-refresh-btn').addEventListener('click', onRefresh);
+    el.querySelector('#update-dismiss-btn').addEventListener('click', () => el.remove());
+  });
 }
 
 export function initPWA() {
