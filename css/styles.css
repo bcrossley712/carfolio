@@ -140,6 +140,12 @@ body.scoped-view .app-main { padding-bottom: 100px; }
   border-color: transparent;
 }
 .btn-icon:hover { color: var(--rust); background: rgba(193,80,63,0.08); border-color: var(--line); }
+.btn-icon-sm {
+  background: transparent; color: var(--ink-soft); padding: 0;
+  width: 30px; height: 30px; font-size: 15px; line-height: 1; border: none; flex-shrink: 0;
+}
+.btn-icon-sm:hover { color: var(--slate); background: rgba(35,38,43,0.06); }
+.btn-icon-sm.danger:hover { color: var(--rust); background: rgba(193,80,63,0.08); }
 
 /* ===================== Empty state ===================== */
 .empty-state {
@@ -216,6 +222,8 @@ body.scoped-view .app-main { padding-bottom: 100px; }
 
 .section { margin-bottom: 32px; }
 .section-title { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); font-weight: 700; margin-bottom: 14px; font-family: var(--font-body); }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.section-title-row .section-title { margin-bottom: 0; }
 
 .reminder-list, .history-list { display: flex; flex-direction: column; gap: 10px; }
 .reminder-row, .history-row {
@@ -251,17 +259,24 @@ body.scoped-view .app-main { padding-bottom: 100px; }
   background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
   padding: 2px 16px;
 }
-.qc-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+.qc-row { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
 .qc-row:first-child { border-top: none; }
-.qc-row-icon { font-size: 19px; width: 26px; text-align: center; flex-shrink: 0; }
-.qc-row-info { flex: 1 1 160px; min-width: 140px; }
+.qc-row-icon { font-size: 19px; width: 26px; text-align: center; flex-shrink: 0; margin-top: 2px; }
+.qc-row-info { flex: 1 1 auto; min-width: 0; }
+.qc-row-name-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .qc-row-name { font-weight: 600; font-size: 14.5px; }
 .qc-row-tip { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
-.qc-row-status { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); flex-shrink: 0; white-space: nowrap; }
+.qc-row-status { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
 .qc-row-status.amber { color: var(--amber-deep); }
 .qc-row-status.rust { color: var(--rust); }
 .qc-row-check { flex-shrink: 0; }
 .qc-row-check:hover { color: var(--moss); background: rgba(76,122,94,0.08); border-color: var(--line); }
+.qc-remind-link {
+  display: inline-flex; align-items: center; gap: 7px; background: none; border: none;
+  color: var(--slate); font-size: 13.5px; font-weight: 700; padding: 4px 0; margin: 0 0 16px; cursor: pointer;
+}
+.qc-remind-link:hover { color: var(--slate-deep); text-decoration: underline; }
+.qc-remind-link-icon { font-size: 14px; }
 
 /* ===================== Remind me dialog ===================== */
 .remind-presets { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -380,6 +395,8 @@ body.scoped-view .app-main { padding-bottom: 100px; }
 .dialog-message { font-size: 14px; color: var(--ink); line-height: 1.6; }
 .btn-danger-solid { background: var(--rust); color: white; }
 .btn-danger-solid:hover { background: #a5402f; }
+.btn-warning-solid { background: var(--amber); color: var(--slate-deep); }
+.btn-warning-solid:hover { background: var(--amber-deep); }
 
 /* ===================== Banner stack (update + install prompts) ===================== */
 .banner-stack {
@@ -421,7 +438,7 @@ body.scoped-view .app-main { padding-bottom: 100px; }
 /* ===================== Scoped view layout (tabbed vehicle / All Vehicles) ===================== */
 body.scoped-view .banner-stack { bottom: 100px; }
 
-.top-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.top-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; position: relative; }
 .back-btn {
   width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line);
   background: var(--paper-raised); display: flex; align-items: center; justify-content: center;
@@ -431,7 +448,8 @@ body.scoped-view .banner-stack { bottom: 100px; }
 .top-title { flex: 1; min-width: 0; }
 .top-title h2 { font-size: 24px; line-height: 1.15; }
 .top-title-sub { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
-.top-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.vehicle-actions-row { display: flex; gap: 10px; }
+.vehicle-actions-row .btn { flex: 1; }
 
 /* ---- Home tab: headline "next action" card ---- */
 .headline-card {
@@ -519,17 +537,15 @@ body.scoped-view .banner-stack { bottom: 100px; }
 .tab-item.home-tab .tab-icon { font-size: 20px; filter: brightness(4); }
 .tab-item.home-tab.active .tab-icon-wrap { background: var(--amber-deep); }
 
-@media (max-width: 520px) {
-  .top-header-actions .btn span { display: none; }
-}
 
 /* ===================== Vehicle switcher ===================== */
 .top-title-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; flex: 1; min-width: 0; text-align: left; }
 .switch-chevron { color: var(--ink-soft); font-size: 12px; flex-shrink: 0; margin-top: 3px; }
-#switcher-container { position: relative; }
+#switcher-container { position: static; }
 .switcher-backdrop { position: fixed; inset: 0; z-index: 40; }
 .switcher-sheet {
-  position: absolute; top: 8px; left: 0; min-width: 240px; max-width: 320px; z-index: 41;
+  position: absolute; top: 100%; left: 0; margin-top: 6px;
+  width: 260px; max-width: calc(100vw - 48px); z-index: 41;
   background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
   box-shadow: var(--shadow-modal); padding: 6px; animation: fadeIn var(--transition-fast);
 }

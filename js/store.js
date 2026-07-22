@@ -52,6 +52,17 @@ export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// Sets a vehicle's currentOdometer/odometerAsOfDate to match whichever
+// logged entry now has the highest mileage. Used after edits/deletes,
+// which are corrections and should be trusted both up and down — unlike
+// addService, which only ever bumps the odometer forward.
+function recomputeOdometerFromServices(v) {
+  if (!v.services.length) return;
+  const top = v.services.reduce((max, s) => (s.mileage > max.mileage ? s : max), v.services[0]);
+  v.currentOdometer = top.mileage;
+  v.odometerAsOfDate = top.date;
+}
+
 export const store = {
   // ---- Vehicles ----
   getVehicles() {
@@ -150,7 +161,33 @@ export const store = {
     const v = data.vehicles.find(v => v.id === vehicleId);
     if (!v) return;
     v.services = v.services.filter(s => s.id !== serviceId);
+    // Deleting the entry that was holding the current-odometer record
+    // shouldn't leave that stale value behind — recompute honestly from
+    // whatever's left.
+    recomputeOdometerFromServices(v);
     writeAll(data);
+  },
+
+  // Edits are corrections, same philosophy as Edit Vehicle: allowed to
+  // move the odometer down as well as up, since the person is actively
+  // fixing a mistake, not just logging a new event.
+  updateService(vehicleId, serviceId, updates) {
+    const data = readAll();
+    const v = data.vehicles.find(v => v.id === vehicleId);
+    if (!v) return null;
+    const entry = v.services.find(s => s.id === serviceId);
+    if (!entry) return null;
+    Object.assign(entry, {
+      date: updates.date,
+      mileage: Number(updates.mileage) || 0,
+      cost: updates.cost === '' || updates.cost == null ? null : Number(updates.cost),
+      notes: updates.notes || '',
+      intervalMiles: updates.intervalMiles || null,
+      intervalMonths: updates.intervalMonths || null,
+    });
+    recomputeOdometerFromServices(v);
+    writeAll(data);
+    return entry;
   },
 
   // ---- Quick checks ----

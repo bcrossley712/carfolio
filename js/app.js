@@ -15,9 +15,9 @@ initInstallPrompt();
 const appEl = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 
-const VALID_TABS = ['home', 'checklist', 'quickchecks', 'history', 'budget'];
+const VALID_TABS = ['home', 'services', 'quickchecks', 'history', 'budget'];
 const TABS = [
-  { id: 'checklist', icon: '\uD83D\uDCCB', label: 'Checklist' },
+  { id: 'services', icon: '\uD83D\uDCCB', label: 'Services' },
   { id: 'quickchecks', icon: '\uD83D\uDD0D', label: 'Checks' },
   { id: 'home', icon: '\uD83C\uDFE0', label: 'Home', home: true },
   { id: 'history', icon: '\uD83D\uDCC3', label: 'History' },
@@ -200,7 +200,7 @@ function getNextAction(view) {
   const overdue = view.checklist.filter(r => r.status === 'overdue').sort((a, b) => b.percentElapsed - a.percentElapsed);
   if (overdue.length) {
     const r = overdue[0];
-    return { tone: 'rust', text: `${r.icon} ${r.typeName} overdue since ${formatDueDate(r.dueDate)}`, cta: 'See checklist', tab: 'checklist' };
+    return { tone: 'rust', text: `${r.icon} ${r.typeName} overdue since ${formatDueDate(r.dueDate)}`, cta: 'See services', tab: 'services' };
   }
   if (view.quickChecksStatus === 'rust') {
     const stale = view.quickChecks.slice().sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999))[0];
@@ -213,7 +213,7 @@ function getNextAction(view) {
   const soon = view.checklist.filter(r => r.status === 'soon').sort((a, b) => b.percentElapsed - a.percentElapsed);
   if (soon.length) {
     const r = soon[0];
-    return { tone: 'amber', text: `${r.icon} ${r.typeName} due ${formatDueDate(r.dueDate)}`, cta: 'See checklist', tab: 'checklist' };
+    return { tone: 'amber', text: `${r.icon} ${r.typeName} due ${formatDueDate(r.dueDate)}`, cta: 'See services', tab: 'services' };
   }
   if (view.quickChecksStatus === 'amber') {
     const stale = view.quickChecks.slice().sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999))[0];
@@ -243,7 +243,7 @@ function headlineCardHTML(action, place) {
 function summaryCardsHTML(counts) {
   return `
     <div class="summary-grid">
-      <button type="button" class="summary-card" data-tab="checklist">
+      <button type="button" class="summary-card" data-tab="services">
         <div class="summary-card-top"><span class="summary-card-icon">\uD83D\uDCCB</span><span class="dot ${counts.checklistStatus}"></span></div>
         <div class="summary-card-label">Checklist</div>
         <div class="summary-card-value">${counts.dueSoon} item${counts.dueSoon === 1 ? '' : 's'} due soon</div>
@@ -397,7 +397,7 @@ function renderVehicleScope(vehicleId, tab) {
   const sub = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
 
   let content;
-  if (tab === 'checklist') content = renderChecklistTab(view);
+  if (tab === 'services') content = renderServicesTab(view);
   else if (tab === 'quickchecks') content = renderQuickChecksTab(view);
   else if (tab === 'history') content = renderHistoryTab(view);
   else if (tab === 'budget') content = renderBudgetTab(view);
@@ -414,18 +414,15 @@ function renderVehicleScope(vehicleId, tab) {
         <span class="switch-chevron">&#9662;</span>
       </button>
       <div id="switcher-container"></div>
-      <div class="top-header-actions">
-        <button class="btn btn-secondary" id="edit-vehicle-btn">Edit</button>
-        <button class="btn btn-primary" id="log-service-btn">Log service</button>
-      </div>
     </div>
     ${content}
     ${tabBarHTML(scopePrefix, tab)}
   `;
 
-  document.getElementById('edit-vehicle-btn').addEventListener('click', () => openEditVehicleModal(vehicle.id));
-  document.getElementById('log-service-btn').addEventListener('click', () => openLogServiceModal(vehicle.id));
   wireSwitcher(vehicles, vehicle.id);
+
+  const editBtn = document.getElementById('edit-vehicle-btn');
+  if (editBtn) editBtn.addEventListener('click', () => openEditVehicleModal(vehicle.id));
 
   const delBtn = document.getElementById('delete-vehicle-btn');
   if (delBtn) {
@@ -441,7 +438,7 @@ function renderVehicleScope(vehicleId, tab) {
     });
   }
 
-  if (tab === 'checklist') view.checklist.forEach(r => wireChecklistRow(vehicle, r));
+  if (tab === 'services') { view.checklist.forEach(r => wireChecklistRow(vehicle, r)); wireServicesTabEvents(vehicle); }
   if (tab === 'quickchecks') { wireQuickChecksTabEvents(vehicle, view.quickChecks); wireTipBanner('quickchecks'); }
   if (tab === 'history') view.history.forEach(h => wireHistoryRow(vehicle, h));
   if (tab === 'budget') wireTipBanner('budget');
@@ -467,21 +464,31 @@ function renderVehicleHomeTab(view) {
       <p class="field-hint" style="margin-bottom:14px;">${powertrainLabel ? `${powertrainLabel} \u00b7 ` : ''}${vehicle.currentOdometer.toLocaleString()} mi as of ${formatDueDate(vehicle.odometerAsOfDate)} \u00b7 ~${annualEstimate.toLocaleString()} mi/yr estimated</p>
       ${headlineCardHTML(action, null)}
       ${summaryCardsHTML(counts)}
-      <button class="btn btn-danger" id="delete-vehicle-btn">Delete this vehicle</button>
+      <div class="vehicle-actions-row">
+        <button class="btn btn-warning-solid" id="edit-vehicle-btn">Edit vehicle</button>
+        <button class="btn btn-danger-solid" id="delete-vehicle-btn">Delete vehicle</button>
+      </div>
     </div>
   `;
 }
 
-function renderChecklistTab(view) {
+function renderServicesTab(view) {
   return `
     <div class="section">
-      <h3 class="section-title">Maintenance checklist</h3>
+      <div class="section-title-row">
+        <h3 class="section-title">Maintenance checklist</h3>
+        <button class="btn btn-primary" id="log-service-btn">Log service</button>
+      </div>
       ${view.checklist.length === 0
         ? `<p class="field-hint">No recommended services set for this vehicle yet.</p>`
         : `<div class="reminder-list">${view.checklist.map(r => reminderRowHTML(view.vehicle, r)).join('')}</div>`
       }
     </div>
   `;
+}
+
+function wireServicesTabEvents(vehicle) {
+  document.getElementById('log-service-btn').addEventListener('click', () => openLogServiceModal(vehicle.id));
 }
 
 function renderQuickChecksTab(view) {
@@ -519,7 +526,7 @@ function renderAllScope(tab) {
   const scopePrefix = '#/all';
 
   let content;
-  if (tab === 'checklist') content = renderAllChecklistTab(views);
+  if (tab === 'services') content = renderAllChecklistTab(views);
   else if (tab === 'quickchecks') content = renderAllQuickChecksTab(views);
   else if (tab === 'history') content = renderAllHistoryTab(views);
   else if (tab === 'budget') content = renderAllBudgetTab(views);
@@ -543,7 +550,7 @@ function renderAllScope(tab) {
 
   wireSwitcher(vehicles, 'all');
 
-  if (tab === 'checklist') views.forEach(v => v.checklist.forEach(r => wireChecklistRow(v.vehicle, r)));
+  if (tab === 'services') views.forEach(v => v.checklist.forEach(r => wireChecklistRow(v.vehicle, r)));
   if (tab === 'quickchecks') views.forEach(v => wireQuickChecksTabEvents(v.vehicle, v.quickChecks, { grouped: true }));
   if (tab === 'history') views.forEach(v => v.history.forEach(h => wireHistoryRow(v.vehicle, h)));
 
@@ -826,14 +833,17 @@ function budgetSectionHTML(vehicle) {
 
 function qcRowHTML(vehicle, i) {
   const key = `${vehicle.id}__${i.id}`;
+  const statusText = i.daysSince == null ? 'Never checked' : `${i.daysSince}d ago`;
   return `
     <div class="qc-row">
       <div class="qc-row-icon">${i.icon}</div>
       <div class="qc-row-info">
-        <div class="qc-row-name">${escapeHTML(i.name)}</div>
+        <div class="qc-row-name-line">
+          <span class="qc-row-name">${escapeHTML(i.name)}</span>
+          <span class="qc-row-status ${i.status}">${statusText}</span>
+        </div>
         <div class="qc-row-tip">${escapeHTML(i.tip)}</div>
       </div>
-      <div class="qc-row-status ${i.status}">${i.daysSince == null ? 'Never checked' : `${i.daysSince}d ago`}</div>
       <button class="btn btn-icon qc-row-check" id="qc-check-${key}" title="Mark ${escapeHTML(i.name)} checked today" aria-label="Mark ${escapeHTML(i.name)} checked today">&check;</button>
     </div>
   `;
@@ -859,10 +869,12 @@ function quickChecksSectionHTML(vehicle) {
         </div>
         <button class="btn btn-primary" id="qc-mark-all-${vehicle.id}">Mark walkaround done</button>
       </div>
+      <button type="button" class="qc-remind-link" id="qc-remind-me-${vehicle.id}">
+        <span class="qc-remind-link-icon">\uD83D\uDD14</span> Remind me to do a walkaround
+      </button>
       <div class="qc-list">
         ${items.map(i => qcRowHTML(vehicle, i)).join('')}
       </div>
-      <button class="btn btn-ghost" id="qc-remind-me-${vehicle.id}" style="margin-top:10px;">Remind me to do a walkaround</button>
     </div>
   `;
 }
@@ -930,12 +942,18 @@ function historyRowHTML(vehicle, entry, opts = {}) {
         ${entry.notes ? `<div class="history-row-notes">${escapeHTML(entry.notes)}</div>` : ''}
       </div>
       <div class="history-row-cost">${costText}</div>
-      <button class="btn btn-ghost" id="delete-history-${entry.id}" aria-label="Delete entry">✕</button>
+      <button class="btn btn-ghost btn-icon-sm" id="edit-history-${entry.id}" aria-label="Edit entry">&#9998;</button>
+      <button class="btn btn-ghost btn-icon-sm danger" id="delete-history-${entry.id}" aria-label="Delete entry">✕</button>
     </div>
   `;
 }
 
 function wireHistoryRow(vehicle, entry) {
+  const editBtn = document.getElementById(`edit-history-${entry.id}`);
+  if (editBtn) {
+    editBtn.addEventListener('click', () => openLogServiceModal(vehicle.id, entry.typeId, entry));
+  }
+
   const btn = document.getElementById(`delete-history-${entry.id}`);
   if (btn) {
     btn.addEventListener('click', async () => {
@@ -1288,14 +1306,14 @@ function wireChoiceGroups() {
 // ============================================================================
 // Log service modal
 // ============================================================================
-function openLogServiceModal(vehicleId, preselectTypeId) {
+function openLogServiceModal(vehicleId, preselectTypeId, editEntry) {
   const vehicle = store.getVehicle(vehicleId);
   if (!vehicle) return;
 
   // Is this a repeat log of a previously-created recurring custom service?
   // (Its typeId won't be in the static catalog — it was generated on first log.)
   const isKnownType = SERVICE_TYPES.some(t => t.id === preselectTypeId);
-  const isRepeatCustom = preselectTypeId && !isKnownType;
+  const isRepeatCustom = !editEntry && preselectTypeId && !isKnownType;
   let repeatCustomName = '';
   let repeatCustomLastEntry = null;
   if (isRepeatCustom) {
@@ -1304,19 +1322,25 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
     repeatCustomName = repeatCustomLastEntry?.typeName || 'Custom service';
   }
 
-  const typeOptionsHTML = isRepeatCustom
-    ? `<option value="${preselectTypeId}" selected>🔧 ${escapeHTML(repeatCustomName)}</option>`
+  // Editing an existing entry: type is locked (changing it has weird
+  // checklist implications — delete and re-log if it's genuinely the
+  // wrong type), everything else prefills from the entry being edited.
+  const isEditingCustom = !!editEntry && editEntry.typeId.startsWith('custom_');
+  const lockType = isRepeatCustom || !!editEntry;
+
+  const typeOptionsHTML = lockType
+    ? `<option value="${editEntry ? editEntry.typeId : preselectTypeId}" selected>${editEntry ? getServiceType(editEntry.typeId).icon : '\u{1F527}'} ${escapeHTML(editEntry ? editEntry.typeName : repeatCustomName)}</option>`
     : SERVICE_TYPES.map(t => `<option value="${t.id}" ${t.id === preselectTypeId ? 'selected' : ''}>${t.icon} ${t.name}</option>`).join('');
 
   openModal(`
     <div class="modal-header">
-      <h2 class="modal-title">Log a service</h2>
+      <h2 class="modal-title">${editEntry ? 'Edit service' : 'Log a service'}</h2>
       <button class="modal-close" id="modal-close">&times;</button>
     </div>
     <form id="service-form">
       <div class="field">
         <label for="s-type">Service type</label>
-        <select id="s-type" ${isRepeatCustom ? 'disabled' : ''}>
+        <select id="s-type" ${lockType ? 'disabled' : ''}>
           ${typeOptionsHTML}
         </select>
       </div>
@@ -1327,30 +1351,30 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
       <div class="field-row">
         <div class="field">
           <label for="s-date">Date</label>
-          <input type="date" id="s-date" value="${todayStr()}" required />
+          <input type="date" id="s-date" value="${editEntry ? editEntry.date : todayStr()}" required />
         </div>
         <div class="field">
           <label for="s-mileage">Mileage</label>
-          <input type="number" id="s-mileage" value="${vehicle.currentOdometer}" min="0" required />
+          <input type="number" id="s-mileage" value="${editEntry ? editEntry.mileage : vehicle.currentOdometer}" min="0" required />
         </div>
       </div>
       <div class="field">
         <label for="s-cost">Cost (optional)</label>
-        <input type="number" id="s-cost" placeholder="45.00" min="0" step="0.01" />
+        <input type="number" id="s-cost" placeholder="45.00" min="0" step="0.01" value="${editEntry?.cost ?? ''}" />
       </div>
       <div class="field">
         <label for="s-notes">Notes (optional)</label>
-        <textarea id="s-notes" placeholder="Shop, parts used, anything worth remembering"></textarea>
+        <textarea id="s-notes" placeholder="Shop, parts used, anything worth remembering">${editEntry ? escapeHTML(editEntry.notes || '') : ''}</textarea>
       </div>
       <div class="field" id="reminder-field">
         <label>Remind me again in</label>
         <div class="field-row">
           <div class="field">
-            <input type="number" id="s-interval-miles" placeholder="e.g. 5000" min="0" value="${repeatCustomLastEntry?.intervalMiles || ''}" />
+            <input type="number" id="s-interval-miles" placeholder="e.g. 5000" min="0" value="${editEntry?.intervalMiles ?? repeatCustomLastEntry?.intervalMiles ?? ''}" />
             <p class="field-hint">miles</p>
           </div>
           <div class="field">
-            <input type="number" id="s-interval-months" placeholder="e.g. 6" min="0" value="${repeatCustomLastEntry?.intervalMonths || ''}" />
+            <input type="number" id="s-interval-months" placeholder="e.g. 6" min="0" value="${editEntry?.intervalMonths ?? repeatCustomLastEntry?.intervalMonths ?? ''}" />
             <p class="field-hint">months</p>
           </div>
         </div>
@@ -1358,7 +1382,7 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" id="cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save entry</button>
+        <button type="submit" class="btn btn-primary">${editEntry ? 'Save changes' : 'Save entry'}</button>
       </div>
     </form>
   `);
@@ -1369,9 +1393,9 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
   const syncFieldVisibility = () => {
     const isCustom = typeSelect.value === 'custom';
     customField.style.display = isCustom ? 'block' : 'none';
-    // Only custom services (new or repeat) get manual interval fields —
-    // catalog types use the automatic category-based schedule.
-    reminderField.style.display = (isCustom || isRepeatCustom) ? 'block' : 'none';
+    // Only custom services (new, repeat, or edited) get manual interval
+    // fields — catalog types use the automatic category-based schedule.
+    reminderField.style.display = (isCustom || isRepeatCustom || isEditingCustom) ? 'block' : 'none';
   };
   typeSelect.addEventListener('change', syncFieldVisibility);
   syncFieldVisibility();
@@ -1385,6 +1409,22 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
     const intervalMonthsRaw = document.getElementById('s-interval-months').value;
     const intervalMiles = intervalMilesRaw ? Number(intervalMilesRaw) : null;
     const intervalMonths = intervalMonthsRaw ? Number(intervalMonthsRaw) : null;
+
+    const fieldValues = {
+      date: document.getElementById('s-date').value,
+      mileage: document.getElementById('s-mileage').value,
+      cost: document.getElementById('s-cost').value,
+      notes: document.getElementById('s-notes').value.trim(),
+      intervalMiles,
+      intervalMonths,
+    };
+
+    if (editEntry) {
+      store.updateService(vehicleId, editEntry.id, fieldValues);
+      closeModal();
+      router();
+      return;
+    }
 
     let typeId, typeName;
     if (isRepeatCustom) {
@@ -1405,16 +1445,7 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
       typeName = getServiceType(typeId).name;
     }
 
-    store.addService(vehicleId, {
-      typeId,
-      typeName,
-      date: document.getElementById('s-date').value,
-      mileage: document.getElementById('s-mileage').value,
-      cost: document.getElementById('s-cost').value,
-      notes: document.getElementById('s-notes').value.trim(),
-      intervalMiles,
-      intervalMonths,
-    });
+    store.addService(vehicleId, { ...fieldValues, typeId, typeName });
 
     // A brand-new custom service only joins the tracked checklist if a
     // reminder interval was actually set — otherwise it's just a one-off

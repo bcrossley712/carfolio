@@ -32,9 +32,11 @@ person's data stays local to their own device/browser.
 
 - Plain HTML/CSS/vanilla JS (ES modules), no build step, no framework, no dependencies.
 - `js/app.js` — entry point, rendering, and hash router. Routes are
-  `#/vehicle/:id/:tab?` and `#/all/:tab?` (tab one of `home` / `checklist` /
-  `quickchecks` / `history` / `budget`, defaults to `home`), plus `#/` for
-  the dashboard. A household with one vehicle skips the dashboard entirely
+  `#/vehicle/:id/:tab?` and `#/all/:tab?` (tab one of `home` / `services` /
+  `quickchecks` / `history` / `budget`, defaults to `home` — the tab id is
+  `services` even though the underlying data functions are still named
+  `getVehicleChecklist()` etc., since that's describing the data model, not
+  the nav label), plus `#/` for the dashboard. A household with one vehicle skips the dashboard entirely
   and lands straight on that vehicle's Home tab. "All Vehicles" is a
   first-class selectable context, not a separate section — same five tabs,
   aggregated across every vehicle. The vehicle name in each scoped header is
@@ -152,10 +154,22 @@ as individual files, but not yet pushed:
   by-service breakdowns)
 - Quick Checks feature end to end, including its own "remind me" reminder
   and the matching "Remind me again" swap on overdue maintenance items
-- Full navigation rebuild: five-tab shell, Home tab with the single-action
-  priority engine, All Vehicles context, header vehicle switcher
-  (also now the only add-vehicle entry point), onboarding tour +
-  contextual tips
+- Full navigation rebuild: five-tab shell (Checklist tab renamed
+  **Services**, and now also where "Log service" lives — it and "Edit
+  vehicle" no longer sit in the persistent header on every tab; Edit moved
+  next to Delete on the Home tab, both solid-color buttons, amber vs. rust),
+  Home tab with the single-action priority engine, All Vehicles context,
+  header vehicle switcher (also now the only add-vehicle entry point,
+  anchored to the header itself so it can't overflow off-screen),
+  onboarding tour + contextual tips
+- Edit a logged service entry (pencil icon next to the existing delete ✕).
+  Editing or deleting an entry now recomputes `currentOdometer` from
+  whichever remaining/edited entry has the highest mileage — same
+  trust-the-correction principle as Edit Vehicle, extended to history edits
+  (previously only `addService` touched the odometer, and only upward).
+- Fixed a horizontal-scroll bug: Quick Checks rows had 4 flex siblings with
+  no wrap fallback and would overflow on ~360px phones; status now lives
+  inside the flexible name column instead of as a rigid sibling.
 Next step is the user pushing these to `main`; nothing here should be
 assumed live until that's confirmed.
 
