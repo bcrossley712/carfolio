@@ -19,6 +19,8 @@
 // breaks, because this file never depended on it.
 // ============================================================================
 
+import { localDateStr } from './dateutil.js';
+
 const STORAGE_KEY = 'carfolio.v1';
 
 function readAll() {
@@ -44,7 +46,7 @@ function writeAll(data) {
   }
 }
 
-function uid() {
+export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
@@ -72,7 +74,7 @@ export const store = {
       isPrimaryCommuter: !!vehicle.isPrimaryCommuter,
       drivingFrequency: vehicle.drivingFrequency || 'average', // 'daily' | 'average' | 'rarely'
       currentOdometer: Number(vehicle.currentOdometer) || 0,
-      odometerAsOfDate: vehicle.odometerAsOfDate || new Date().toISOString().slice(0, 10),
+      odometerAsOfDate: vehicle.odometerAsOfDate || localDateStr(),
       createdAt: new Date().toISOString(),
       services: [], // array of { id, typeId, typeName, date, mileage, cost, notes, intervalMiles, intervalMonths }
     };

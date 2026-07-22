@@ -32,6 +32,7 @@ const PRECACHE_URLS = [
   './js/banner.js',
   './js/install-prompt.js',
   './js/vehicle-lookup.js',
+  './js/dateutil.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',

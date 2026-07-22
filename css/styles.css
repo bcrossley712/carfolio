@@ -219,7 +219,7 @@ button { font-family: inherit; }
 .reminder-row-due { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
 .reminder-row-due.due-amber { color: var(--amber-deep); font-weight: 600; }
 .reminder-row-due.due-rust { color: var(--rust); font-weight: 600; }
-.reminder-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.reminder-row-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 .history-row-icon {
   width: 36px; height: 36px; border-radius: 50%;

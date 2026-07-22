@@ -76,6 +76,18 @@ person's data stays local to their own device/browser.
   government API) detects powertrain category, and `CATEGORY_SCHEDULES` in
   `reminders.js` gives category-appropriate defaults (gas/diesel/hybrid/EV).
   Honest tradeoff — general guidance, not the owner's exact numbers.
+- **Custom services can now recur.** Logging a custom service optionally
+  takes a mileage and/or month interval; if either is set, it becomes a
+  real tracked checklist item (own dynamic `typeId` like `custom_abc123`,
+  added to `recommendedServiceIds`) with the same gauge/due-date/calendar-export
+  treatment as any catalog service. Blank interval = one-time, history-only.
+  This surfaced two bugs, now fixed: (1) `getDefaultInterval` was defaulting
+  unmatched types to a 12-month fallback, which silently overrode a
+  deliberately-blank interval field — fixed to return `null` for both axes
+  when there's no matching schedule entry. (2) Appending a new custom
+  `typeId` to an empty `recommendedServiceIds` array (the legacy/fallback
+  signal for "use category defaults") would wipe out the standard items —
+  fixed by materializing the category defaults explicitly before appending.
 - **No accounts, no shared/synced data.** Each family member's data lives only
   in their own browser. Deliberate simplicity tradeoff — see manual JSON
   backup/restore in the Backup modal as the mitigation for browser data loss.
@@ -96,17 +108,34 @@ person's data stays local to their own device/browser.
 ## Current state
 
 Deployed to GitHub Pages (bcrossley712/carfolio), confirmed working —
-PWA installs correctly on Android. Repo contents verified byte-for-byte
-against what was delivered.
+PWA installs correctly on Android. Custom-service recurring reminders
+(previous round) verified with throwaway test scripts.
 
-Just added: VIN-aware vehicle setup wizard (2 steps: details+VIN, then
-maintenance checklist confirmation), category-based recommended checklists,
-and a custom install-prompt banner. Logic verified with throwaway test
-scripts (not committed) — category schedules, checklist status transitions,
-and VIN powertrain categorization all tested; live NHTSA API call itself
-couldn't be tested from the sandbox (domain not in its network allowlist)
-but was verified with mocked responses matching real vPIC's response shape.
-Not yet tested by the user in an actual browser.
+Just fixed three issues from user testing:
+1. **Timezone bug** — `todayStr()` and reminder date math used
+   `new Date().toISOString().slice(0,10)`, which returns the UTC date, not
+   the user's local date. In evening hours west of UTC (anyone in the US,
+   for instance) this silently showed tomorrow's date as "today." Fixed via
+   a new shared `js/dateutil.js` (`localDateStr()`), applied everywhere
+   "today" is computed from the current moment — `app.js`'s `todayStr()`,
+   `reminders.js`'s `today` and `lastDate` fallback, `store.js`'s
+   `odometerAsOfDate` fallback. Note: `addDays()`/`addMonths()` in
+   `reminders.js` were NOT affected — they anchor on local midnight
+   (`dateStr + 'T00:00:00'`) before converting, which is safe; only the
+   "get current moment's date" call sites had the bug.
+2. **"Log now" missing after first log** — checklist rows only showed "Add
+   to calendar" once an item had history, no way to log it early from that
+   row. Fixed: both buttons now show on every checklist row regardless of
+   status; the existing event-wiring loop already handled both ids
+   generically, so no wiring changes were needed, just the HTML.
+3. **Calendar event title** — `"Vehicle: Service"` → `"Vehicle: Service due"`
+   in `buildICS()`'s title, so the reminder reads as an actual reminder.
+
+Known gaps raised but not yet built (user will prioritize next): can't edit
+a logged entry directly, can't remove a checklist item without re-adding
+the vehicle, no standalone "update odometer" action, annual mileage
+estimate never recalculates from actual logged data, no cost totals, no
+save-confirmation toast.
 
 Icons were generated programmatically (Pillow) from the in-app brand mark
 (circle + tick + amber needle on slate background) rather than hand-designed —

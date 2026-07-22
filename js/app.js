@@ -1,4 +1,4 @@
-import { store } from './store.js';
+import { store, uid } from './store.js';
 import { SERVICE_TYPES, getServiceType, getVehicleChecklist, getPrimaryReminder, formatDueDate, estimateAnnualMileage, getCategorySchedule } from './reminders.js';
 import { renderGauge, gaugeLabel } from './gauge.js';
 import { buildICS, downloadICS } from './ics.js';
@@ -6,6 +6,7 @@ import { confirmDialog, alertDialog } from './dialogs.js';
 import { initPWA } from './pwa.js';
 import { initInstallPrompt } from './install-prompt.js';
 import { decodeVIN, isValidVINFormat } from './vehicle-lookup.js';
+import { localDateStr } from './dateutil.js';
 
 initPWA();
 initInstallPrompt();
@@ -162,7 +163,7 @@ function renderVehicleDetail(vehicleId) {
     if (icsBtn) {
       icsBtn.addEventListener('click', () => {
         const ics = buildICS({
-          title: `${vehicle.name}: ${r.typeName}`,
+          title: `${vehicle.name}: ${r.typeName} due`,
           description: `Estimated by Carfolio based on your driving habits. Update the date in your calendar if you know the exact due date.`,
           dueDate: r.dueDate,
           uidSeed: `${vehicle.id}-${r.typeId}-${r.dueDate}`,
@@ -221,6 +222,7 @@ function reminderRowHTML(vehicle, r) {
         <div class="reminder-row-due ${dueClass}">${dueText}${mileageText}</div>
       </div>
       <div class="reminder-row-actions">
+        <button class="btn btn-secondary" id="log-now-${r.typeId}">Log now</button>
         <button class="btn btn-secondary" id="ics-${r.typeId}">Add to calendar</button>
       </div>
     </div>
@@ -591,6 +593,22 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
   const vehicle = store.getVehicle(vehicleId);
   if (!vehicle) return;
 
+  // Is this a repeat log of a previously-created recurring custom service?
+  // (Its typeId won't be in the static catalog — it was generated on first log.)
+  const isKnownType = SERVICE_TYPES.some(t => t.id === preselectTypeId);
+  const isRepeatCustom = preselectTypeId && !isKnownType;
+  let repeatCustomName = '';
+  let repeatCustomLastEntry = null;
+  if (isRepeatCustom) {
+    const logs = vehicle.services.filter(s => s.typeId === preselectTypeId);
+    repeatCustomLastEntry = logs.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0] || null;
+    repeatCustomName = repeatCustomLastEntry?.typeName || 'Custom service';
+  }
+
+  const typeOptionsHTML = isRepeatCustom
+    ? `<option value="${preselectTypeId}" selected>🔧 ${escapeHTML(repeatCustomName)}</option>`
+    : SERVICE_TYPES.map(t => `<option value="${t.id}" ${t.id === preselectTypeId ? 'selected' : ''}>${t.icon} ${t.name}</option>`).join('');
+
   openModal(`
     <div class="modal-header">
       <h2 class="modal-title">Log a service</h2>
@@ -599,8 +617,8 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
     <form id="service-form">
       <div class="field">
         <label for="s-type">Service type</label>
-        <select id="s-type">
-          ${SERVICE_TYPES.map(t => `<option value="${t.id}" ${t.id === preselectTypeId ? 'selected' : ''}>${t.icon} ${t.name}</option>`).join('')}
+        <select id="s-type" ${isRepeatCustom ? 'disabled' : ''}>
+          ${typeOptionsHTML}
         </select>
       </div>
       <div class="field" id="custom-name-field" style="display:none;">
@@ -625,6 +643,20 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
         <label for="s-notes">Notes (optional)</label>
         <textarea id="s-notes" placeholder="Shop, parts used, anything worth remembering"></textarea>
       </div>
+      <div class="field" id="reminder-field">
+        <label>Remind me again in</label>
+        <div class="field-row">
+          <div class="field">
+            <input type="number" id="s-interval-miles" placeholder="e.g. 5000" min="0" value="${repeatCustomLastEntry?.intervalMiles || ''}" />
+            <p class="field-hint">miles</p>
+          </div>
+          <div class="field">
+            <input type="number" id="s-interval-months" placeholder="e.g. 6" min="0" value="${repeatCustomLastEntry?.intervalMonths || ''}" />
+            <p class="field-hint">months</p>
+          </div>
+        </div>
+        <p class="field-hint">Leave both blank to log this as a one-time thing with no reminder. Set either (or both — whichever comes first wins) to track it going forward.</p>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" id="cancel-btn">Cancel</button>
         <button type="submit" class="btn btn-primary">Save entry</button>
@@ -634,27 +666,75 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
 
   const typeSelect = document.getElementById('s-type');
   const customField = document.getElementById('custom-name-field');
-  const syncCustomField = () => {
-    customField.style.display = typeSelect.value === 'custom' ? 'block' : 'none';
+  const reminderField = document.getElementById('reminder-field');
+  const syncFieldVisibility = () => {
+    const isCustom = typeSelect.value === 'custom';
+    customField.style.display = isCustom ? 'block' : 'none';
+    // Only custom services (new or repeat) get manual interval fields —
+    // catalog types use the automatic category-based schedule.
+    reminderField.style.display = (isCustom || isRepeatCustom) ? 'block' : 'none';
   };
-  typeSelect.addEventListener('change', syncCustomField);
-  syncCustomField();
+  typeSelect.addEventListener('change', syncFieldVisibility);
+  syncFieldVisibility();
 
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('cancel-btn').addEventListener('click', closeModal);
   document.getElementById('service-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const typeId = typeSelect.value;
-    const type = getServiceType(typeId);
-    const customName = document.getElementById('s-custom-name').value.trim();
+
+    const intervalMilesRaw = document.getElementById('s-interval-miles').value;
+    const intervalMonthsRaw = document.getElementById('s-interval-months').value;
+    const intervalMiles = intervalMilesRaw ? Number(intervalMilesRaw) : null;
+    const intervalMonths = intervalMonthsRaw ? Number(intervalMonthsRaw) : null;
+
+    let typeId, typeName;
+    if (isRepeatCustom) {
+      typeId = preselectTypeId;
+      typeName = repeatCustomName;
+    } else if (typeSelect.value === 'custom') {
+      const customName = document.getElementById('s-custom-name').value.trim();
+      if (!customName) {
+        document.getElementById('s-custom-name').focus();
+        return;
+      }
+      // Brand-new custom service — gets its own id so it can be tracked
+      // separately from every other custom entry, not lumped together.
+      typeId = `custom_${uid()}`;
+      typeName = customName;
+    } else {
+      typeId = typeSelect.value;
+      typeName = getServiceType(typeId).name;
+    }
+
     store.addService(vehicleId, {
       typeId,
-      typeName: typeId === 'custom' && customName ? customName : type.name,
+      typeName,
       date: document.getElementById('s-date').value,
       mileage: document.getElementById('s-mileage').value,
       cost: document.getElementById('s-cost').value,
       notes: document.getElementById('s-notes').value.trim(),
+      intervalMiles,
+      intervalMonths,
     });
+
+    // A brand-new custom service only joins the tracked checklist if a
+    // reminder interval was actually set — otherwise it's just a one-off
+    // history entry, matching the "leave blank for one-time" hint above.
+    if (!isRepeatCustom && typeId.startsWith('custom_') && (intervalMiles || intervalMonths)) {
+      const fresh = store.getVehicle(vehicleId);
+      // If recommendedServiceIds is empty, it's relying on the implicit
+      // category-default fallback (older vehicles, or ones added before
+      // this checklist feature existed) — materialize that list explicitly
+      // before appending, so adding a custom item doesn't wipe out the
+      // standard ones that were only "on" via the empty-array fallback.
+      const baseIds = (fresh.recommendedServiceIds && fresh.recommendedServiceIds.length)
+        ? fresh.recommendedServiceIds
+        : getCategorySchedule(fresh.powertrain).map(s => s.typeId);
+      store.updateVehicle(vehicleId, {
+        recommendedServiceIds: [...baseIds, typeId],
+      });
+    }
+
     closeModal();
     renderVehicleDetail(vehicleId);
   });
@@ -719,7 +799,7 @@ function openBackupModal() {
 // Utilities
 // ============================================================================
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr();
 }
 function escapeHTML(str) {
   const div = document.createElement('div');

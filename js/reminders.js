@@ -16,6 +16,8 @@
 // directly if no VIN is provided.
 // ============================================================================
 
+import { localDateStr } from './dateutil.js';
+
 // Catalog of all known service types — names/icons only, no intervals here.
 // Intervals live in CATEGORY_SCHEDULES since they vary by vehicle type.
 export const SERVICE_CATALOG = {
@@ -118,7 +120,7 @@ function getDefaultInterval(vehicle, typeId) {
   const entry = schedule.find(s => s.typeId === typeId);
   return entry
     ? { intervalMiles: entry.intervalMiles, intervalMonths: entry.intervalMonths }
-    : { intervalMiles: null, intervalMonths: 12 };
+    : { intervalMiles: null, intervalMonths: null };
 }
 
 // Estimated annual mileage based on the quick questionnaire.
@@ -166,7 +168,7 @@ export function computeReminder(vehicle, serviceTypeId, lastService) {
   const intervalMiles = lastService?.intervalMiles ?? defaults.intervalMiles;
   const intervalMonths = lastService?.intervalMonths ?? defaults.intervalMonths;
 
-  const lastDate = lastService?.date || vehicle.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const lastDate = lastService?.date || (vehicle.createdAt ? localDateStr(new Date(vehicle.createdAt)) : localDateStr());
   const lastMileage = lastService?.mileage ?? vehicle.currentOdometer ?? 0;
 
   let dueDateFromMiles = null;
@@ -189,7 +191,7 @@ export function computeReminder(vehicle, serviceTypeId, lastService) {
     dueDate = dueDateFromMiles || dueDateFromTime || addMonths(lastDate, 12);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const totalWindowDays = Math.max(daysBetween(lastDate, dueDate), 1);
   const elapsedDays = daysBetween(lastDate, today);
   const percentElapsed = Math.max(0, elapsedDays / totalWindowDays);
@@ -202,7 +204,7 @@ export function computeReminder(vehicle, serviceTypeId, lastService) {
 
   return {
     typeId: type.id,
-    typeName: type.name,
+    typeName: (lastService && lastService.typeName) || type.name,
     icon: type.icon,
     dueDate,
     estimatedDueMileage,

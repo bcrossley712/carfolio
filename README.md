@@ -50,14 +50,22 @@ say: a very long time.
 ## Project structure
 
 ```
-index.html          Page shell, loads styles and app.js
-css/styles.css       All visual design — colors, type, layout, the gauge, modals
-js/store.js          Data layer (localStorage). See the comment at the top —
-                      this is the seam where an optional backend would plug in.
-js/reminders.js      Service type defaults + mileage-to-date estimation logic
-js/gauge.js           Renders the arc gauge (the app's signature visual element)
-js/ics.js             Builds and downloads .ics calendar files for reminders
-js/app.js             Routing, rendering, and all event wiring
+index.html            Page shell, loads styles and app.js
+manifest.json         PWA manifest (install metadata, icons)
+service-worker.js     Offline caching + drives the update-available banner
+css/styles.css        All visual design — colors, type, layout, the gauge, modals
+js/store.js           Data layer (localStorage). See the comment at the top —
+                       this is the seam where an optional backend would plug in.
+js/reminders.js       Category-based maintenance schedules + date estimation logic
+js/dateutil.js         Local-calendar-date helper (avoids UTC date-rollover bugs)
+js/vehicle-lookup.js  Optional VIN decoding via NHTSA's free vPIC API
+js/gauge.js            Renders the arc gauge (the app's signature visual element)
+js/ics.js              Builds and downloads .ics calendar files for reminders
+js/dialogs.js          Custom confirm/alert modals, replacing native browser popups
+js/banner.js           Shared helper for the update/install dismissible banners
+js/pwa.js              Service worker registration + "update available" banner
+js/install-prompt.js  Custom "Install Carfolio" banner
+js/app.js              Routing, rendering, and all event wiring
 ```
 
 ## Adding a backend later (optional)
