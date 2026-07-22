@@ -31,8 +31,19 @@ person's data stays local to their own device/browser.
 ## Architecture
 
 - Plain HTML/CSS/vanilla JS (ES modules), no build step, no framework, no dependencies.
+- `js/app.js` — entry point, rendering, and hash router. Routes are
+  `#/vehicle/:id/:tab?` and `#/all/:tab?` (tab one of `home` / `checklist` /
+  `quickchecks` / `history` / `budget`, defaults to `home`), plus `#/` for
+  the dashboard. A household with one vehicle skips the dashboard entirely
+  and lands straight on that vehicle's Home tab. "All Vehicles" is a
+  first-class selectable context, not a separate section — same five tabs,
+  aggregated across every vehicle. The vehicle name in each scoped header is
+  a switcher (chevron, always present): jump to another vehicle, All
+  Vehicles, or add a new one, without backing out to the dashboard.
 - `js/store.js` — data layer, currently `localStorage`-backed. Has a documented
   seam for adding an optional backend later (see comment at top of that file).
+  Also owns Quick Checks state (`vehicle.quickChecks`, keyed by check id) and
+  `untrackService()` for removing a single checklist item.
 - `js/reminders.js` — converts mileage-based service intervals into estimated
   calendar dates, using a 2-question estimate (primary commuter? driving
   frequency?) taken when a vehicle is added. Also defines `CATEGORY_SCHEDULES`
@@ -42,6 +53,8 @@ person's data stays local to their own device/browser.
   returns every recommended item for a vehicle, including ones never logged
   yet (shown as "Not logged yet"), which is what drives the "where do I
   stand on this vehicle" checklist view — not just overdue items.
+  `getCostHistory()` / `getAnnualBudgetEstimate()` power the Budget tab (see
+  Key decisions below for the amortization approach).
 - `js/vehicle-lookup.js` — optional VIN decoding via NHTSA's free vPIC API
   (no key required). Auto-fills year/make/model and detects powertrain
   category when a VIN is provided; purely additive, setup works fine without
@@ -52,8 +65,18 @@ person's data stays local to their own device/browser.
   mechanism: once added to a phone's calendar, it keeps firing forever, with
   no dependency on this app, a backend, or notification permissions staying
   granted.
+- `js/quickchecks.js` — the self-check catalog (coolant, oil level, tire
+  pressure/tread, wipers, lights, dash warnings, battery terminals, etc.).
+  Different in kind from `reminders.js`: no mileage math, just elapsed days
+  since last checked, with a grace window (green <30 days, amber 30-60,
+  rust 60+/never checked). A vehicle's Quick Checks section status is the
+  *worst* item, not an average, so one neglected item can't hide behind the
+  others being current.
 - `js/dialogs.js` — custom confirm/alert modals (Promise-based), replacing
-  native `confirm()`/`alert()`.
+  native `confirm()`/`alert()`. Also `remindMeDialog()` (presets + custom
+  date), shared by overdue-maintenance "Remind me again" and the Quick
+  Checks walkaround reminder — both export a `.ics` for the chosen date via
+  `ics.js`, same as the primary reminders.
 - `js/banner.js` — shared helper for small dismissible banners stacked at
   the bottom of the screen, used by both `pwa.js` and `install-prompt.js`.
 - `js/pwa.js` + `service-worker.js` — installable PWA with offline support and
@@ -81,6 +104,26 @@ person's data stays local to their own device/browser.
   real tracked checklist item (own dynamic `typeId` like `custom_abc123`,
   added to `recommendedServiceIds`) with the same gauge/due-date/calendar-export
   treatment as any catalog service. Blank interval = one-time, history-only.
+- **"Untracked" is a real state, not the same as "never set."**
+  `recommendedServiceIds == null` means "use the category defaults";
+  `recommendedServiceIds == []` means "explicitly tracking nothing" (e.g.
+  after untracking every item). These used to be conflated — an emptied
+  list silently fell back to showing everything again — fixed in both
+  `getVehicleChecklist()` and the custom-service-adds-to-checklist path in
+  `app.js`.
+- **Annual budget estimate amortizes irregular costs.** Rather than a raw
+  calendar-year sum (which turns a $600-every-5-years tire replacement into
+  one alarming spike and four zero years), each recurring item's average
+  logged cost is spread across its real interval — same "mileage or time,
+  whichever's sooner" logic that drives due-date estimates — and summed.
+  One-time costs (no interval ever set) are left out of the estimate but
+  still count toward the plain this-year/all-time totals.
+- **Home tab surfaces one action, not a summary.** Deliberate for the
+  target audience (family members who don't think about cars much):
+  overdue maintenance beats a stale Quick Check beats something due soon
+  beats "all clear" — only the single highest-priority thing is ever
+  headlined, with a secondary summary-card grid below for anyone who wants
+  the fuller picture.
 - **No accounts, no shared/synced data.** Each family member's data lives only
   in their own browser. Deliberate simplicity tradeoff — see manual JSON
   backup/restore in the Backup modal as the mitigation for browser data loss.
@@ -100,13 +143,28 @@ person's data stays local to their own device/browser.
 
 ## Current state
 
-Deployed to GitHub Pages (bcrossley712/carfolio) and confirmed working,
-including PWA install on Android.
+Live at GitHub Pages (bcrossley712/carfolio) is **behind** what's described
+in this file. The following are finished, tested, and delivered to the user
+as individual files, but not yet pushed:
+- CSS fix for the checklist-row overlap bug on narrow screens
+- Untrack a checklist item (✕ on each row)
+- Budgeting tab (this-year / all-time / estimated-annual, by-year and
+  by-service breakdowns)
+- Quick Checks feature end to end, including its own "remind me" reminder
+  and the matching "Remind me again" swap on overdue maintenance items
+- Full navigation rebuild: five-tab shell, Home tab with the single-action
+  priority engine, All Vehicles context, header vehicle switcher
+  (also now the only add-vehicle entry point), onboarding tour +
+  contextual tips
+Next step is the user pushing these to `main`; nothing here should be
+assumed live until that's confirmed.
 
-Known gaps, not yet built: can't edit a logged entry directly, can't remove
-a checklist item without re-adding the vehicle, no standalone "update
-odometer" action, annual mileage estimate never recalculates from actual
-logged data, no cost totals, no save-confirmation toast.
+Known gaps, not yet built: can't edit a logged entry directly, no
+standalone "update odometer" action separate from logging a service, annual
+mileage estimate never recalculates from actual logged data, no
+save-confirmation toast. The All Vehicles Budget tab shows a by-vehicle
+rollup with tap-through rather than a merged line-item breakdown (mixing
+different vehicles' service types didn't make sense to combine).
 
 Icons were generated programmatically (Pillow) from the in-app brand mark
 (circle + tick + amber needle on slate background) rather than hand-designed —

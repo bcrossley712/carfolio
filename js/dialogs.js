@@ -51,6 +51,62 @@ export function confirmDialog(message, { title = 'Are you sure?', confirmText = 
   });
 }
 
+// Presets plus a custom date, resolving to a 'YYYY-MM-DD' string or null if
+// cancelled. Used for both overdue-maintenance "Remind me again" and the
+// Quick Checks walkaround reminder.
+export function remindMeDialog({ title = 'Remind me', message = 'When should we remind you?' } = {}) {
+  return new Promise((resolve) => {
+    const presets = [
+      { label: 'In 3 days', days: 3 },
+      { label: 'In 1 week', days: 7 },
+      { label: 'In 2 weeks', days: 14 },
+    ];
+    const todayPlus = (days) => {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    open(`
+      <div class="modal-header">
+        <h2 class="modal-title">${title}</h2>
+      </div>
+      <p class="dialog-message">${message}</p>
+      <div class="remind-presets">
+        ${presets.map(p => `<button type="button" class="btn btn-secondary" data-days="${p.days}">${p.label}</button>`).join('')}
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label for="remind-custom-date">Or pick a date</label>
+        <input type="date" id="remind-custom-date" min="${todayPlus(1)}">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="dialog-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="dialog-confirm">Set reminder</button>
+      </div>
+    `);
+
+    const cleanup = (result) => {
+      close();
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') cleanup(null); };
+
+    document.querySelectorAll('[data-days]').forEach(btn => {
+      btn.addEventListener('click', () => cleanup(todayPlus(Number(btn.getAttribute('data-days')))));
+    });
+    document.getElementById('dialog-confirm').addEventListener('click', () => {
+      const val = document.getElementById('remind-custom-date').value;
+      if (val) cleanup(val);
+    });
+    document.getElementById('dialog-cancel').addEventListener('click', () => cleanup(null));
+    document.getElementById('dialog-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'dialog-backdrop') cleanup(null);
+    });
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 export function alertDialog(message, { title = 'Heads up', buttonText = 'OK' } = {}) {
   return new Promise((resolve) => {
     open(`

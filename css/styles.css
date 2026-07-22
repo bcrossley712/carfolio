@@ -101,6 +101,8 @@ button { font-family: inherit; }
   padding: 32px 24px 64px;
   min-height: 60vh;
 }
+body.scoped-view .site-footer { display: none; }
+body.scoped-view .app-main { padding-bottom: 100px; }
 
 /* ===================== Buttons ===================== */
 .btn {
@@ -232,6 +234,37 @@ button { font-family: inherit; }
 .reminder-row-due.due-amber { color: var(--amber-deep); font-weight: 600; }
 .reminder-row-due.due-rust { color: var(--rust); font-weight: 600; }
 .reminder-row-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ===================== Quick checks ===================== */
+.qc-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  background: var(--slate-deep); border-radius: var(--radius-lg); padding: 16px 18px; margin-bottom: 14px;
+}
+.qc-hero.tone-amber { background: var(--amber-deep); }
+.qc-hero.tone-rust { background: var(--rust); }
+.qc-hero-text { color: white; min-width: 0; }
+.qc-hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: rgba(255,255,255,0.65); margin-bottom: 4px; }
+.qc-hero-value { font-family: var(--font-display); font-size: 15px; font-weight: 700; line-height: 1.3; }
+.qc-hero .btn-primary { background: white; color: var(--slate-deep); flex-shrink: 0; }
+.qc-hero .btn-primary:hover { background: rgba(255,255,255,0.9); }
+.qc-list {
+  background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 2px 16px;
+}
+.qc-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+.qc-row:first-child { border-top: none; }
+.qc-row-icon { font-size: 19px; width: 26px; text-align: center; flex-shrink: 0; }
+.qc-row-info { flex: 1 1 160px; min-width: 140px; }
+.qc-row-name { font-weight: 600; font-size: 14.5px; }
+.qc-row-tip { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+.qc-row-status { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); flex-shrink: 0; white-space: nowrap; }
+.qc-row-status.amber { color: var(--amber-deep); }
+.qc-row-status.rust { color: var(--rust); }
+.qc-row-check { flex-shrink: 0; }
+.qc-row-check:hover { color: var(--moss); background: rgba(76,122,94,0.08); border-color: var(--line); }
+
+/* ===================== Remind me dialog ===================== */
+.remind-presets { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .history-row-icon {
   width: 36px; height: 36px; border-radius: 50%;
@@ -384,3 +417,168 @@ button { font-family: inherit; }
   .banner-stack { left: 16px; right: 16px; transform: none; bottom: 16px; max-width: none; }
   .reminder-row-actions { flex: 1 1 100%; justify-content: flex-start; padding-left: 62px; }
 }
+
+/* ===================== Scoped view layout (tabbed vehicle / All Vehicles) ===================== */
+body.scoped-view .banner-stack { bottom: 100px; }
+
+.top-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.back-btn {
+  width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper-raised); display: flex; align-items: center; justify-content: center;
+  color: var(--slate-deep); font-size: 20px; flex-shrink: 0; text-decoration: none; line-height: 1;
+}
+.back-btn:hover { border-color: var(--slate); }
+.top-title { flex: 1; min-width: 0; }
+.top-title h2 { font-size: 24px; line-height: 1.15; }
+.top-title-sub { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
+.top-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ---- Home tab: headline "next action" card ---- */
+.headline-card {
+  border-radius: var(--radius-lg); padding: 22px; margin-bottom: 18px; box-shadow: var(--shadow-card);
+}
+.headline-card.tone-rust { background: var(--rust); }
+.headline-card.tone-amber { background: var(--amber-deep); }
+.headline-card.tone-ok { background: var(--moss); }
+.headline-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: rgba(255,255,255,0.75); margin-bottom: 8px; }
+.headline-text { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: white; line-height: 1.3; margin-bottom: 16px; }
+.headline-text .place { opacity: 0.85; font-weight: 600; font-size: 15px; display: block; margin-bottom: 3px; }
+.headline-btn { background: white; color: var(--slate-deep); border: none; }
+.headline-btn:hover { background: rgba(255,255,255,0.9); }
+.headline-card.tone-ok .headline-btn { color: var(--moss); }
+
+/* ---- Home tab: summary card grid ---- */
+.summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.summary-card {
+  background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 14px 15px; text-align: left; cursor: pointer;
+}
+.summary-card:hover { border-color: var(--slate); }
+.summary-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.summary-card-icon { font-size: 18px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--moss); }
+.dot.amber { background: var(--amber); }
+.dot.rust { background: var(--rust); }
+.summary-card-label { font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; }
+.summary-card-value { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--slate-deep); line-height: 1.25; }
+
+/* ---- Checklist / history row vehicle tags (All Vehicles scope) ---- */
+.reminder-row-tag { font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: 2px; }
+
+/* ---- Quick checks groups (All Vehicles scope) ---- */
+.qc-group { background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md); margin-bottom: 10px; overflow: hidden; }
+.qc-group summary { list-style: none; cursor: pointer; }
+.qc-group summary::-webkit-details-marker { display: none; }
+.qc-group-summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.qc-group-info { flex: 1; min-width: 0; }
+.qc-group-name { font-weight: 600; font-size: 15px; }
+.qc-group-status { font-size: 13px; margin-top: 2px; color: var(--ink-soft); }
+.qc-group-status.amber { color: var(--amber-deep); font-weight: 600; }
+.qc-group-status.rust { color: var(--rust); font-weight: 600; }
+.qc-group-mark { border: 1px solid var(--line); background: var(--paper); color: var(--slate-deep); border-radius: 100px; padding: 7px 13px; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
+.qc-group-mark:hover { border-color: var(--slate); }
+.qc-group-chevron { color: var(--ink-soft); font-size: 13px; flex-shrink: 0; transition: transform var(--transition-fast); }
+.qc-group[open] .qc-group-chevron { transform: rotate(90deg); }
+.qc-group-items { padding: 0 16px 6px; border-top: 1px solid var(--line); }
+.qc-group-items .qc-row:first-child { border-top: none; }
+
+/* ---- All Vehicles budget by-vehicle rows ---- */
+.budget-panel-title { font-size: 13px; font-weight: 700; color: var(--slate-deep); margin-bottom: 8px; }
+.budget-line-btn { all: unset; display: block; width: 100%; cursor: pointer; box-sizing: border-box; }
+.budget-line-btn:hover .budget-row span:first-child { color: var(--slate); }
+
+/* ---- All Vehicles dashboard entry card ---- */
+.all-vehicles-card { background: var(--slate-deep); border-color: var(--slate-deep); }
+.all-vehicles-card .vehicle-card-name, .all-vehicles-card .vehicle-card-sub { color: white; }
+.all-vehicles-card .vehicle-card-sub { opacity: 0.65; }
+.all-vehicles-icon {
+  width: 76px; height: 76px; border-radius: 50%; background: var(--amber); color: var(--slate-deep);
+  display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0;
+}
+
+/* ---- Bottom tab bar ---- */
+.tab-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; max-width: 1080px; margin: 0 auto;
+  height: 78px; background: rgba(247,246,243,0.94); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line); display: flex; align-items: flex-start; padding-top: 8px; z-index: 30;
+}
+.tab-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  color: var(--ink-soft); font-size: 11px; font-weight: 600; text-decoration: none; padding: 6px 4px 2px;
+}
+.tab-item .tab-icon { font-size: 19px; transition: transform var(--transition-fast); }
+.tab-item.active { color: var(--slate-deep); font-weight: 700; }
+.tab-item.active:not(.home-tab) { background: rgba(31,58,77,0.08); border-radius: var(--radius-sm); margin: 0 3px; }
+.tab-item.active:not(.home-tab) .tab-icon { transform: scale(1.12); }
+.tab-item.home-tab { position: relative; top: -16px; }
+.tab-item.home-tab .tab-icon-wrap {
+  width: 50px; height: 50px; border-radius: 50%; background: var(--slate-deep);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(21,42,56,0.35);
+  border: 4px solid var(--paper); margin-bottom: 2px; transition: background var(--transition-fast);
+}
+.tab-item.home-tab .tab-icon { font-size: 20px; filter: brightness(4); }
+.tab-item.home-tab.active .tab-icon-wrap { background: var(--amber-deep); }
+
+@media (max-width: 520px) {
+  .top-header-actions .btn span { display: none; }
+}
+
+/* ===================== Vehicle switcher ===================== */
+.top-title-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 0; flex: 1; min-width: 0; text-align: left; }
+.switch-chevron { color: var(--ink-soft); font-size: 12px; flex-shrink: 0; margin-top: 3px; }
+#switcher-container { position: relative; }
+.switcher-backdrop { position: fixed; inset: 0; z-index: 40; }
+.switcher-sheet {
+  position: absolute; top: 8px; left: 0; min-width: 240px; max-width: 320px; z-index: 41;
+  background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-modal); padding: 6px; animation: fadeIn var(--transition-fast);
+}
+.switch-option {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; padding: 10px 10px; border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+.switch-option:hover { background: rgba(35,38,43,0.05); }
+.switch-option.current { background: rgba(31,58,77,0.08); color: var(--slate-deep); }
+.switch-option-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher-divider { height: 1px; background: var(--line); margin: 4px 6px; }
+.switch-option-add { color: var(--slate); }
+.switch-option-add span:first-child { font-size: 16px; font-weight: 700; }
+
+/* ===================== Add-vehicle dashboard card ===================== */
+.add-vehicle-card {
+  border: 1.5px dashed var(--line); border-radius: var(--radius-lg); background: transparent;
+  color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 118px;
+}
+.add-vehicle-card:hover { border-color: var(--slate); color: var(--slate); }
+.add-vehicle-plus { font-size: 26px; font-weight: 700; line-height: 1; }
+
+/* ===================== Contextual tip banner ===================== */
+.tip-banner {
+  background: #FBF0DC; border: 1px solid #EED8AC; border-radius: var(--radius-md);
+  padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px;
+}
+.tip-banner-icon { font-size: 15px; flex-shrink: 0; }
+.tip-banner-text { font-size: 13px; color: var(--slate-deep); flex: 1; line-height: 1.45; }
+.tip-banner-close { background: none; border: none; color: var(--ink-soft); font-size: 16px; padding: 0 2px; flex-shrink: 0; cursor: pointer; line-height: 1; }
+.tip-banner-close:hover { color: var(--ink); }
+
+/* ===================== Onboarding tour ===================== */
+.modal-tour { background: var(--slate-deep); color: white; text-align: center; padding: 0; overflow: hidden; }
+.onboard-skip {
+  display: block; margin: 16px 16px 0 auto; background: rgba(255,255,255,0.12); border: none;
+  color: white; font-size: 12px; font-weight: 700; padding: 7px 13px; border-radius: 100px; cursor: pointer;
+}
+.onboard-skip:hover { background: rgba(255,255,255,0.2); }
+.onboard-body { padding: 12px 32px 26px; }
+.onboard-icon { font-size: 44px; margin-bottom: 16px; }
+.onboard-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: white; margin-bottom: 10px; }
+.onboard-desc { font-size: 14px; color: rgba(255,255,255,0.75); line-height: 1.55; }
+.onboard-footer { padding: 0 26px 26px; }
+.onboard-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 18px; }
+.onboard-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3); transition: all var(--transition-fast); }
+.onboard-dot.active { background: var(--amber); width: 18px; border-radius: 4px; }
+.modal-tour .btn-primary { background: var(--amber); color: var(--slate-deep); }
+.modal-tour .btn-primary:hover { background: var(--amber-deep); }

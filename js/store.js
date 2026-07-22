@@ -21,6 +21,7 @@
 
 import { localDateStr } from './dateutil.js';
 import { getCategorySchedule } from './reminders.js';
+import { QUICK_CHECK_TYPES } from './quickchecks.js';
 
 const STORAGE_KEY = 'carfolio.v1';
 
@@ -78,6 +79,7 @@ export const store = {
       odometerAsOfDate: vehicle.odometerAsOfDate || localDateStr(),
       createdAt: new Date().toISOString(),
       services: [], // array of { id, typeId, typeName, date, mileage, cost, notes, intervalMiles, intervalMonths }
+      quickChecks: {}, // { [checkId]: { lastCheckedDate } } — see quickchecks.js
     };
     data.vehicles.push(newVehicle);
     writeAll(data);
@@ -149,6 +151,28 @@ export const store = {
     if (!v) return;
     v.services = v.services.filter(s => s.id !== serviceId);
     writeAll(data);
+  },
+
+  // ---- Quick checks ----
+  markQuickCheck(id, checkId, date) {
+    const data = readAll();
+    const v = data.vehicles.find(v => v.id === id);
+    if (!v) return null;
+    if (!v.quickChecks) v.quickChecks = {};
+    v.quickChecks[checkId] = { lastCheckedDate: date || localDateStr() };
+    writeAll(data);
+    return v;
+  },
+
+  markAllQuickChecks(id, date) {
+    const data = readAll();
+    const v = data.vehicles.find(v => v.id === id);
+    if (!v) return null;
+    if (!v.quickChecks) v.quickChecks = {};
+    const checkedDate = date || localDateStr();
+    QUICK_CHECK_TYPES.forEach(t => { v.quickChecks[t.id] = { lastCheckedDate: checkedDate }; });
+    writeAll(data);
+    return v;
   },
 
   // ---- Backup / restore (local file, always available regardless of any backend) ----
