@@ -1,5 +1,5 @@
 import { store, uid } from './store.js';
-import { SERVICE_TYPES, getServiceType, getVehicleChecklist, getPrimaryReminder, formatDueDate, estimateAnnualMileage, getCategorySchedule } from './reminders.js';
+import { SERVICE_TYPES, getServiceType, getVehicleChecklist, getPrimaryReminder, formatDueDate, estimateAnnualMileage, getCategorySchedule, getCostHistory, getAnnualBudgetEstimate } from './reminders.js';
 import { renderGauge, gaugeLabel } from './gauge.js';
 import { buildICS, downloadICS } from './ics.js';
 import { confirmDialog, alertDialog } from './dialogs.js';
@@ -140,6 +140,8 @@ function renderVehicleDetail(vehicleId) {
       }
     </div>
 
+    ${budgetSectionHTML(vehicle)}
+
     <div class="section">
       <button class="btn btn-danger" id="delete-vehicle-btn">Delete this vehicle</button>
     </div>
@@ -175,6 +177,19 @@ function renderVehicleDetail(vehicleId) {
     if (logBtn) {
       logBtn.addEventListener('click', () => openLogServiceModal(vehicle.id, r.typeId));
     }
+    const untrackBtn = document.getElementById(`untrack-${r.typeId}`);
+    if (untrackBtn) {
+      untrackBtn.addEventListener('click', async () => {
+        const ok = await confirmDialog(
+          `Stop tracking ${escapeHTML(r.typeName)}? Its service history stays intact — you can add it back anytime from Edit vehicle.`,
+          { title: 'Stop tracking', confirmText: 'Stop tracking' }
+        );
+        if (ok) {
+          store.untrackService(vehicle.id, r.typeId);
+          renderVehicleDetail(vehicle.id);
+        }
+      });
+    }
   });
 
   history.forEach(h => {
@@ -204,6 +219,7 @@ function reminderRowHTML(vehicle, r) {
         </div>
         <div class="reminder-row-actions">
           <button class="btn btn-secondary" id="log-now-${r.typeId}">Log now</button>
+          <button class="btn btn-icon" id="untrack-${r.typeId}" title="Stop tracking ${escapeHTML(r.typeName)}" aria-label="Stop tracking ${escapeHTML(r.typeName)}">&times;</button>
         </div>
       </div>
     `;
@@ -224,7 +240,72 @@ function reminderRowHTML(vehicle, r) {
       <div class="reminder-row-actions">
         <button class="btn btn-secondary" id="log-now-${r.typeId}">Log now</button>
         <button class="btn btn-secondary" id="ics-${r.typeId}">Add to calendar</button>
+        <button class="btn btn-icon" id="untrack-${r.typeId}" title="Stop tracking ${escapeHTML(r.typeName)}" aria-label="Stop tracking ${escapeHTML(r.typeName)}">&times;</button>
       </div>
+    </div>
+  `;
+}
+
+function money(n) {
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function formatInterval(days) {
+  const years = days / 365;
+  if (years >= 1.5) return `${Math.round(years)} yr`;
+  const months = days / 30.44;
+  if (months >= 1.5) return `${Math.round(months)} mo`;
+  return `${Math.round(days)} days`;
+}
+
+function budgetSectionHTML(vehicle) {
+  const costHistory = getCostHistory(vehicle);
+  const budget = getAnnualBudgetEstimate(vehicle);
+
+  if (costHistory.allTime === 0) {
+    return `
+      <div class="section">
+        <h3 class="section-title">Budgeting</h3>
+        <p class="field-hint">Log a service with a cost to start tracking spend and an annual budget estimate.</p>
+      </div>
+    `;
+  }
+
+  const byYearHTML = costHistory.byYear.map(y => `
+    <div class="budget-row"><span>${y.year}</span><span>${money(y.total)}</span></div>
+  `).join('');
+
+  const breakdownHTML = budget.breakdown.length
+    ? budget.breakdown.map(b => `
+        <div class="budget-row">
+          <span>${b.icon} ${escapeHTML(b.typeName)} <span class="budget-row-detail">avg ${money(b.avgCost)} every ${formatInterval(b.intervalDays)}</span></span>
+          <span>${money(b.annualCost)}/yr</span>
+        </div>
+      `).join('')
+    : `<p class="field-hint">No recurring costed services yet — one-time costs don't factor into the annual estimate.</p>`;
+
+  return `
+    <div class="section">
+      <h3 class="section-title">Budgeting</h3>
+      <div class="budget-stats">
+        <div class="budget-stat">
+          <div class="budget-stat-label">This year</div>
+          <div class="budget-stat-value">${money(costHistory.thisYear)}</div>
+        </div>
+        <div class="budget-stat">
+          <div class="budget-stat-label">All time</div>
+          <div class="budget-stat-value">${money(costHistory.allTime)}</div>
+        </div>
+        <div class="budget-stat budget-stat-highlight">
+          <div class="budget-stat-label">Estimated annual budget</div>
+          <div class="budget-stat-value">${money(budget.total)}</div>
+        </div>
+      </div>
+      <details class="budget-breakdown">
+        <summary>See where that comes from</summary>
+        ${breakdownHTML}
+      </details>
+      ${byYearHTML ? `<details class="budget-breakdown"><summary>By year</summary>${byYearHTML}</details>` : ''}
     </div>
   `;
 }
@@ -727,7 +808,7 @@ function openLogServiceModal(vehicleId, preselectTypeId) {
       // this checklist feature existed) — materialize that list explicitly
       // before appending, so adding a custom item doesn't wipe out the
       // standard ones that were only "on" via the empty-array fallback.
-      const baseIds = (fresh.recommendedServiceIds && fresh.recommendedServiceIds.length)
+      const baseIds = fresh.recommendedServiceIds != null
         ? fresh.recommendedServiceIds
         : getCategorySchedule(fresh.powertrain).map(s => s.typeId);
       store.updateVehicle(vehicleId, {

@@ -212,6 +212,7 @@ export function computeReminder(vehicle, serviceTypeId, lastService) {
     status,
     intervalMiles,
     intervalMonths,
+    intervalDays: totalWindowDays,
   };
 }
 
@@ -240,7 +241,7 @@ export function getPrimaryReminder(vehicle) {
 // omitted entirely) — this is what answers "where do I stand on maintaining
 // this vehicle," not just "what's overdue."
 export function getVehicleChecklist(vehicle) {
-  const recommendedIds = (vehicle.recommendedServiceIds && vehicle.recommendedServiceIds.length)
+  const recommendedIds = vehicle.recommendedServiceIds != null
     ? vehicle.recommendedServiceIds
     : getCategorySchedule(vehicle.powertrain).map(s => s.typeId);
 
@@ -259,6 +260,77 @@ export function getVehicleChecklist(vehicle) {
     if (b.status === 'unlogged' && a.status !== 'unlogged') return -1;
     return b.percentElapsed - a.percentElapsed;
   });
+}
+
+// ============================================================================
+// Cost / budgeting
+// ============================================================================
+
+// Actual $ spent — no smoothing, exactly what was logged. Used for the
+// "this year" / "all time" figures and the year-by-year history list.
+export function getCostHistory(vehicle) {
+  const byYear = {};
+  let allTime = 0;
+  for (const s of vehicle.services) {
+    if (s.cost == null) continue;
+    allTime += s.cost;
+    const year = s.date.slice(0, 4);
+    byYear[year] = (byYear[year] || 0) + s.cost;
+  }
+  const currentYear = localDateStr().slice(0, 4);
+  const years = Object.keys(byYear).sort((a, b) => b - a); // newest first
+  return {
+    thisYear: byYear[currentYear] || 0,
+    allTime,
+    byYear: years.map(year => ({ year, total: byYear[year] })),
+  };
+}
+
+// Estimated annual budget: for every service type with a real recurring
+// interval (from the category schedule, or a custom service's own
+// interval) and at least one logged cost, spreads its average cost across
+// that interval to get a $/year figure, summed across types. A $600 tire
+// replacement every 5 years becomes "$120/year," which is what's actually
+// useful for setting aside money — instead of one alarming spike in a
+// single year's actual total.
+//
+// One-time entries (no interval ever set) are left out here — there's no
+// basis to predict them forward — but they still count in getCostHistory.
+export function getAnnualBudgetEstimate(vehicle) {
+  const byType = {};
+  for (const s of vehicle.services) {
+    (byType[s.typeId] = byType[s.typeId] || []).push(s);
+  }
+
+  const breakdown = [];
+  for (const [typeId, logs] of Object.entries(byType)) {
+    const costed = logs.filter(s => s.cost != null);
+    if (costed.length === 0) continue;
+
+    const last = logs.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const reminder = computeReminder(vehicle, typeId, last);
+    // Only annualize items with a genuine interval — computeReminder falls
+    // back to a 12-month window internally when neither is set, which
+    // would wrongly treat a one-time cost as a recurring yearly one.
+    if (!reminder.intervalMiles && !reminder.intervalMonths) continue;
+
+    const avgCost = costed.reduce((sum, s) => sum + s.cost, 0) / costed.length;
+    const annualCost = avgCost * (365 / reminder.intervalDays);
+    const catalog = getServiceType(typeId);
+
+    breakdown.push({
+      typeId,
+      typeName: last.typeName || catalog.name,
+      icon: catalog.icon,
+      avgCost,
+      intervalDays: reminder.intervalDays,
+      annualCost,
+    });
+  }
+
+  breakdown.sort((a, b) => b.annualCost - a.annualCost);
+  const total = breakdown.reduce((sum, b) => sum + b.annualCost, 0);
+  return { total, breakdown };
 }
 
 export function formatDueDate(dateStr) {

@@ -20,6 +20,7 @@
 // ============================================================================
 
 import { localDateStr } from './dateutil.js';
+import { getCategorySchedule } from './reminders.js';
 
 const STORAGE_KEY = 'carfolio.v1';
 
@@ -88,6 +89,24 @@ export const store = {
     const v = data.vehicles.find(v => v.id === id);
     if (!v) return null;
     Object.assign(v, updates);
+    writeAll(data);
+    return v;
+  },
+
+  // Removes a single service type from the tracked checklist. If the
+  // vehicle has never had recommendedServiceIds explicitly set (older
+  // vehicles, or ones relying on the implicit category default), this
+  // materializes that default list first so the removal has something
+  // real to subtract from — otherwise there'd be nothing to distinguish
+  // "never customized" from "customized down to zero."
+  untrackService(id, typeId) {
+    const data = readAll();
+    const v = data.vehicles.find(v => v.id === id);
+    if (!v) return null;
+    const current = v.recommendedServiceIds != null
+      ? v.recommendedServiceIds
+      : getCategorySchedule(v.powertrain).map(s => s.typeId);
+    v.recommendedServiceIds = current.filter(t => t !== typeId);
     writeAll(data);
     return v;
   },
