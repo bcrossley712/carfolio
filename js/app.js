@@ -1,7 +1,7 @@
 import { store, uid } from './store.js';
-import { SERVICE_TYPES, getServiceType, getVehicleChecklist, getPrimaryReminder, formatDueDate, estimateAnnualMileage, getCategorySchedule, getCostHistory, getAnnualBudgetEstimate } from './reminders.js';
+import { SERVICE_TYPES, getServiceType, getVehicleChecklist, formatDueDate, estimateAnnualMileage, getCategorySchedule, getCostHistory, getAnnualBudgetEstimate } from './reminders.js';
 import { getVehicleQuickChecks, getQuickChecksStatus } from './quickchecks.js';
-import { renderGauge, gaugeLabel } from './gauge.js';
+import { renderGauge } from './gauge.js';
 import { buildICS, downloadICS } from './ics.js';
 import { confirmDialog, alertDialog, remindMeDialog } from './dialogs.js';
 import { initPWA } from './pwa.js';
@@ -26,8 +26,10 @@ const TABS = [
 
 // ============================================================================
 // Router — simple hash-based routing, no framework, no build step.
-// #/                       -> dashboard (or straight into the vehicle if
-//                             there's only one — no pointless extra screen)
+// #/                       -> never rendered directly; redirects to the last
+//                             vehicle viewed, or All Vehicles, or the sole
+//                             vehicle, or the empty state — landing is
+//                             always a real Home tab, never a list to pick from
 // #/vehicle/:id/:tab?      -> a single vehicle, scoped to one of the tabs
 // #/all/:tab?              -> every vehicle combined, same set of tabs
 // ============================================================================
@@ -43,120 +45,63 @@ function router() {
     const [, tabRaw] = allMatch;
     renderAllScope(VALID_TABS.includes(tabRaw) ? tabRaw : 'home');
   } else {
-    renderDashboard();
+    routeToLastOrDefault();
   }
 }
 window.addEventListener('hashchange', router);
 window.addEventListener('DOMContentLoaded', router);
 
-// ============================================================================
-// Dashboard
-// ============================================================================
-function renderDashboard() {
-  document.body.classList.remove('scoped-view');
+// Remembers where you last were (a specific vehicle, or All Vehicles) so
+// launching the app always drops you back into real content instead of a
+// list to choose from. Updated on every navigation into a scope, per the
+// "wherever you left off" choice — not just on deliberate switcher use.
+const LAST_SCOPE_KEY = 'carfolio.lastScope';
+function getLastScope() {
+  try {
+    const raw = localStorage.getItem(LAST_SCOPE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function setLastScope(scope) {
+  try { localStorage.setItem(LAST_SCOPE_KEY, JSON.stringify(scope)); } catch (e) { /* private browsing, etc. */ }
+}
+
+function routeToLastOrDefault() {
   const vehicles = store.getVehicles();
+  if (vehicles.length === 0) { renderEmptyState(); return; }
 
-  if (vehicles.length === 0) {
-    appEl.innerHTML = `
-      <div class="empty-state">
-        <h2>No vehicles yet</h2>
-        <p>Add your first vehicle to start tracking oil changes, tire rotations, and everything else.</p>
-        <button class="btn btn-primary" id="empty-add-vehicle">Add your first vehicle</button>
-      </div>
-    `;
-    document.getElementById('empty-add-vehicle').addEventListener('click', openAddVehicleModal);
+  const last = getLastScope();
+  if (last?.type === 'vehicle' && vehicles.some(v => v.id === last.id)) {
+    window.location.hash = `#/vehicle/${last.id}/home`;
     return;
   }
-
-  // One vehicle means there's nothing to choose between — skip straight to
-  // its own tabs rather than showing a list of one.
-  if (vehicles.length === 1) {
-    window.location.hash = `#/vehicle/${vehicles[0].id}/home`;
+  if (last?.type === 'all' && vehicles.length > 1) {
+    window.location.hash = '#/all/home';
     return;
   }
+  // No valid last scope (first-ever launch, or it pointed at something that
+  // no longer exists): one vehicle needs no choice, otherwise default to
+  // the combined view rather than making someone pick.
+  window.location.hash = vehicles.length === 1 ? `#/vehicle/${vehicles[0].id}/home` : '#/all/home';
+}
+
+// ============================================================================
+// Empty state — no vehicles at all yet
+// ============================================================================
+function renderEmptyState() {
+  document.body.classList.remove('scoped-view');
+  renderHeader({ mode: 'empty' });
 
   appEl.innerHTML = `
-    <div class="vehicle-grid">
-      ${allVehiclesCardHTML()}
-      ${vehicles.map(v => vehicleCardHTML(v)).join('')}
-      ${addVehicleCardHTML()}
+    <div class="empty-state">
+      <h2>No vehicles yet</h2>
+      <p>Add your first vehicle to start tracking oil changes, tire rotations, and everything else.</p>
+      <button class="btn btn-primary" id="empty-add-vehicle">Add your first vehicle</button>
+      <button class="btn btn-ghost" id="empty-restore-btn">Restore from a backup</button>
     </div>
   `;
-
-  document.getElementById('card-all').addEventListener('click', () => {
-    window.location.hash = '#/all/home';
-  });
-  document.getElementById('card-add-vehicle').addEventListener('click', openAddVehicleModal);
-  vehicles.forEach(v => {
-    document.getElementById(`card-${v.id}`).addEventListener('click', () => {
-      window.location.hash = `#/vehicle/${v.id}/home`;
-    });
-  });
-}
-
-function addVehicleCardHTML() {
-  return `
-    <button type="button" class="vehicle-card add-vehicle-card" id="card-add-vehicle">
-      <span class="add-vehicle-plus">+</span>
-      <span>Add vehicle</span>
-    </button>
-  `;
-}
-
-function allVehiclesCardHTML() {
-  return `
-    <article class="vehicle-card all-vehicles-card" id="card-all" tabindex="0">
-      <div class="vehicle-card-top">
-        <div class="all-vehicles-icon">\uD83D\uDD00</div>
-        <div class="vehicle-card-info">
-          <div class="vehicle-card-name">All Vehicles</div>
-          <div class="vehicle-card-sub">See everything together</div>
-        </div>
-      </div>
-    </article>
-  `;
-}
-
-function vehicleCardHTML(vehicle) {
-  const view = buildVehicleView(vehicle);
-  const reminder = getPrimaryReminder(vehicle);
-  const overallStatus = worstOf(view.checklistStatus, view.quickChecksStatus);
-  const statusClass = overallStatus === 'rust' ? 'status-rust' : overallStatus === 'amber' ? 'status-amber' : (!reminder ? 'status-empty' : '');
-
-  let statusText;
-  if (reminder && reminder.status !== 'ok') {
-    statusText = reminder.status === 'overdue' ? `${reminder.typeName} overdue` : `${reminder.typeName} due ${formatDueDate(reminder.dueDate)}`;
-  } else if (view.quickChecksStatus !== 'ok') {
-    const stale = view.quickChecks.slice().sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999))[0];
-    statusText = stale.daysSince == null ? `${stale.name} never checked` : `${stale.name} \u2014 ${stale.daysSince}d ago`;
-  } else if (!reminder) {
-    statusText = 'No services logged yet';
-  } else {
-    statusText = `${reminder.typeName} due ${formatDueDate(reminder.dueDate)}`;
-  }
-
-  const percent = reminder ? reminder.percentElapsed : 0;
-  const gaugeStatus = reminder ? reminder.status : 'empty';
-  const sub = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
-
-  return `
-    <article class="vehicle-card" id="card-${vehicle.id}" tabindex="0">
-      <div class="vehicle-card-top">
-        <div class="gauge-wrap">
-          ${renderGauge(percent, gaugeStatus)}
-          <div class="gauge-label">${gaugeLabel(gaugeStatus, percent)}</div>
-        </div>
-        <div class="vehicle-card-info">
-          <div class="vehicle-card-name">${escapeHTML(vehicle.name)}</div>
-          <div class="vehicle-card-sub">${escapeHTML(sub || 'No details added')}</div>
-        </div>
-      </div>
-      <div class="vehicle-card-status ${statusClass}">
-        <span class="status-dot"></span>
-        <span>${escapeHTML(statusText)}</span>
-      </div>
-    </article>
-  `;
+  document.getElementById('empty-add-vehicle').addEventListener('click', openAddVehicleModal);
+  document.getElementById('empty-restore-btn').addEventListener('click', openBackupModal);
 }
 
 // ============================================================================
@@ -298,9 +243,11 @@ function wireGenericNav(scopePrefix) {
 }
 
 // The vehicle name in the header doubles as a switcher: jump straight to
-// another vehicle or All Vehicles, or add a new one — all without backing
-// out to the dashboard first. This is also now the only place vehicles get
-// added, so the chevron shows even when there's just one vehicle.
+// another vehicle or All Vehicles, or add a new one — all without a
+// separate list screen to back out to. This is also now the only place
+// vehicles get added, so the chevron shows even when there's just one
+// vehicle, and it's where backup/restore lives now that there's no
+// persistent footer to hold it.
 function wireSwitcher(vehicles, currentId) {
   const titleBtn = document.getElementById('top-title-btn');
   const container = document.getElementById('switcher-container');
@@ -313,7 +260,7 @@ function wireSwitcher(vehicles, currentId) {
 
     const options = [];
     if (vehicles.length > 1) {
-      options.push({ id: 'all', icon: '\uD83D\uDD00', label: 'All Vehicles' });
+      options.push({ id: 'all', icon: '\uD83D\uDD00', label: 'Your Vehicles' });
     }
     vehicles.forEach(v => options.push({ id: v.id, icon: '\uD83D\uDE97', label: v.name }));
 
@@ -329,6 +276,9 @@ function wireSwitcher(vehicles, currentId) {
         <button type="button" class="switch-option switch-option-add" id="switcher-add-vehicle">
           <span>+</span><span class="switch-option-label">Add vehicle</span>
         </button>
+        <button type="button" class="switch-option" id="switcher-backup">
+          <span>\u2601\uFE0F</span><span class="switch-option-label">Back up or restore</span>
+        </button>
       </div>
     `;
 
@@ -343,7 +293,54 @@ function wireSwitcher(vehicles, currentId) {
       close();
       openAddVehicleModal();
     });
+    document.getElementById('switcher-backup').addEventListener('click', () => {
+      close();
+      openBackupModal();
+    });
   });
+}
+
+// ============================================================================
+// Persistent header — lives in its own sticky shell (#app-header, outside
+// the tab content that appEl re-renders), so it never scrolls away. Shows
+// vehicle info instead of the app's own name/logo, per the idea that
+// what's on screen should be about the vehicle, not the app.
+// mode: 'vehicle' | 'all' | 'empty'
+// ============================================================================
+function renderHeader({ mode, title, sub, vehicles = [], currentId = null }) {
+  const headerEl = document.getElementById('app-header');
+
+  if (mode === 'empty') {
+    headerEl.innerHTML = `
+      <div class="header-inner">
+        <div class="top-title"><h2>Carfolio</h2></div>
+        <div class="header-actions">
+          <button type="button" class="btn btn-primary" id="header-add-vehicle">Add vehicle</button>
+          <button id="help-btn" class="btn btn-icon" title="Show the tour" aria-label="Show the tour">?</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('header-add-vehicle').addEventListener('click', openAddVehicleModal);
+    document.getElementById('help-btn').addEventListener('click', openOnboardingTour);
+    return;
+  }
+
+  headerEl.innerHTML = `
+    <div class="header-inner">
+      <button type="button" class="top-title-btn" id="top-title-btn">
+        <div class="top-title">
+          <h2>${escapeHTML(title)}</h2>
+          ${sub ? `<div class="top-title-sub">${escapeHTML(sub)}</div>` : ''}
+        </div>
+        <span class="switch-chevron">&#9662;</span>
+      </button>
+      <div id="switcher-container"></div>
+      <button id="help-btn" class="btn btn-icon" title="Show the tour" aria-label="Show the tour">?</button>
+    </div>
+  `;
+  wireSwitcher(vehicles, currentId);
+  document.getElementById('help-btn').addEventListener('click', openOnboardingTour);
+  positionStickyBar();
 }
 
 // ============================================================================
@@ -390,6 +387,7 @@ function renderVehicleScope(vehicleId, tab) {
     return;
   }
   document.body.classList.add('scoped-view');
+  setLastScope({ type: 'vehicle', id: vehicle.id });
 
   const view = buildVehicleView(vehicle);
   const vehicles = store.getVehicles();
@@ -404,22 +402,11 @@ function renderVehicleScope(vehicleId, tab) {
   else content = renderVehicleHomeTab(view);
 
   appEl.innerHTML = `
-    <div class="top-header">
-      ${vehicles.length > 1 ? `<a href="#/" class="back-btn" aria-label="All vehicles">&lsaquo;</a>` : ''}
-      <button type="button" class="top-title-btn" id="top-title-btn">
-        <div class="top-title">
-          <h2>${escapeHTML(vehicle.name)}</h2>
-          <div class="top-title-sub">${escapeHTML(sub || 'No details added')}</div>
-        </div>
-        <span class="switch-chevron">&#9662;</span>
-      </button>
-      <div id="switcher-container"></div>
-    </div>
     ${content}
     ${tabBarHTML(scopePrefix, tab)}
   `;
 
-  wireSwitcher(vehicles, vehicle.id);
+  renderHeader({ mode: 'vehicle', title: vehicle.name, sub: sub || 'No details added', vehicles, currentId: vehicle.id });
 
   const editBtn = document.getElementById('edit-vehicle-btn');
   if (editBtn) editBtn.addEventListener('click', () => openEditVehicleModal(vehicle.id));
@@ -474,11 +461,11 @@ function renderVehicleHomeTab(view) {
 
 function renderServicesTab(view) {
   return `
+    <div class="services-sticky-bar" id="services-sticky-bar">
+      <button class="btn btn-primary btn-block" id="log-service-btn">Log service</button>
+    </div>
     <div class="section">
-      <div class="section-title-row">
-        <h3 class="section-title">Maintenance checklist</h3>
-        <button class="btn btn-primary" id="log-service-btn">Log service</button>
-      </div>
+      <h3 class="section-title">Maintenance checklist</h3>
       ${view.checklist.length === 0
         ? `<p class="field-hint">No recommended services set for this vehicle yet.</p>`
         : `<div class="reminder-list">${view.checklist.map(r => reminderRowHTML(view.vehicle, r)).join('')}</div>`
@@ -489,6 +476,17 @@ function renderServicesTab(view) {
 
 function wireServicesTabEvents(vehicle) {
   document.getElementById('log-service-btn').addEventListener('click', () => openLogServiceModal(vehicle.id));
+  positionStickyBar();
+}
+
+// The outer site-header (brand + help button) is itself sticky at the very
+// top of the page, so the Log Service bar needs to stick just below it —
+// measuring the real rendered height rather than hardcoding it keeps this
+// correct if the header's contents ever change.
+function positionStickyBar() {
+  const bar = document.getElementById('services-sticky-bar');
+  const header = document.querySelector('.site-header');
+  if (bar && header) bar.style.top = `${header.offsetHeight}px`;
 }
 
 function renderQuickChecksTab(view) {
@@ -521,6 +519,7 @@ function renderAllScope(tab) {
     return;
   }
   document.body.classList.add('scoped-view');
+  setLastScope({ type: 'all' });
 
   const views = vehicles.map(buildVehicleView);
   const scopePrefix = '#/all';
@@ -533,22 +532,11 @@ function renderAllScope(tab) {
   else content = renderAllHomeTab(views);
 
   appEl.innerHTML = `
-    <div class="top-header">
-      <a href="#/" class="back-btn" aria-label="Back">&lsaquo;</a>
-      <button type="button" class="top-title-btn" id="top-title-btn">
-        <div class="top-title">
-          <h2>All Vehicles</h2>
-          <div class="top-title-sub">${vehicles.length} vehicles</div>
-        </div>
-        <span class="switch-chevron">&#9662;</span>
-      </button>
-      <div id="switcher-container"></div>
-    </div>
     ${content}
     ${tabBarHTML(scopePrefix, tab)}
   `;
 
-  wireSwitcher(vehicles, 'all');
+  renderHeader({ mode: 'all', title: 'Your Vehicles', sub: `${vehicles.length} vehicles`, vehicles, currentId: 'all' });
 
   if (tab === 'services') views.forEach(v => v.checklist.forEach(r => wireChecklistRow(v.vehicle, r)));
   if (tab === 'quickchecks') views.forEach(v => wireQuickChecksTabEvents(v.vehicle, v.quickChecks, { grouped: true }));
@@ -844,7 +832,7 @@ function qcRowHTML(vehicle, i) {
         </div>
         <div class="qc-row-tip">${escapeHTML(i.tip)}</div>
       </div>
-      <button class="btn btn-icon qc-row-check" id="qc-check-${key}" title="Mark ${escapeHTML(i.name)} checked today" aria-label="Mark ${escapeHTML(i.name)} checked today">&check;</button>
+      <button class="btn btn-icon qc-row-check ${i.status}" id="qc-check-${key}" title="Mark ${escapeHTML(i.name)} checked today" aria-label="Mark ${escapeHTML(i.name)} checked today">&check;</button>
     </div>
   `;
 }
@@ -1606,9 +1594,5 @@ function escapeAttr(str) {
 // ============================================================================
 // Global wiring
 // ============================================================================
-document.getElementById('help-btn').addEventListener('click', openOnboardingTour);
-document.getElementById('footer-backup-link').addEventListener('click', (e) => {
-  e.preventDefault();
-  openBackupModal();
-});
 window.addEventListener('DOMContentLoaded', maybeShowOnboardingTour);
+window.addEventListener('resize', positionStickyBar);

@@ -36,12 +36,21 @@ person's data stays local to their own device/browser.
   `quickchecks` / `history` / `budget`, defaults to `home` — the tab id is
   `services` even though the underlying data functions are still named
   `getVehicleChecklist()` etc., since that's describing the data model, not
-  the nav label), plus `#/` for the dashboard. A household with one vehicle skips the dashboard entirely
-  and lands straight on that vehicle's Home tab. "All Vehicles" is a
-  first-class selectable context, not a separate section — same five tabs,
-  aggregated across every vehicle. The vehicle name in each scoped header is
-  a switcher (chevron, always present): jump to another vehicle, All
-  Vehicles, or add a new one, without backing out to the dashboard.
+  the nav label). `#/` is never rendered directly — it's a pure redirect to
+  wherever you last were (`localStorage` key `carfolio.lastScope`, updated
+  on every navigation into a vehicle or All Vehicles): that vehicle if it
+  still exists, else "Your Vehicles" if 2+ vehicles exist, else the sole
+  vehicle, else the empty state. There is no dashboard/vehicle-list screen —
+  the header switcher (vehicle name + chevron, always present, including
+  with just one vehicle) replaced it, including being the only place to add
+  a vehicle. "All Vehicles" is a first-class selectable context, not a
+  separate section — same five tabs, aggregated across every vehicle.
+- The persistent header (`#app-header` shell in `index.html`, rendered by
+  `renderHeader()`) shows vehicle info instead of the app's own name/logo —
+  one sticky bar now, not two (the old brand bar and per-scope title bar
+  were merged). Shows "Add vehicle" when there are no vehicles yet.
+  Backup/restore moved into the switcher menu, since there's no page for a
+  persistent footer to live on anymore.
 - `js/store.js` — data layer, currently `localStorage`-backed. Has a documented
   seam for adding an optional backend later (see comment at top of that file).
   Also owns Quick Checks state (`vehicle.quickChecks`, keyed by check id) and
@@ -120,6 +129,13 @@ person's data stays local to their own device/browser.
   whichever's sooner" logic that drives due-date estimates — and summed.
   One-time costs (no interval ever set) are left out of the estimate but
   still count toward the plain this-year/all-time totals.
+- **Edits/deletes to history recompute the odometer honestly.** Same
+  trust-the-correction principle as Edit Vehicle: `store.js`'s
+  `updateService()`/`deleteService()` reset `currentOdometer` to whichever
+  remaining/edited entry now has the highest mileage — allowed to move it
+  down, not just up. Previously only `addService` touched the odometer, and
+  only ever forward, which left it stale after an edit or delete of the
+  entry that had been the high-water mark.
 - **Home tab surfaces one action, not a summary.** Deliberate for the
   target audience (family members who don't think about cars much):
   overdue maintenance beats a stale Quick Check beats something due soon
@@ -146,39 +162,35 @@ person's data stays local to their own device/browser.
 ## Current state
 
 Live at GitHub Pages (bcrossley712/carfolio) is **behind** what's described
-in this file. The following are finished, tested, and delivered to the user
-as individual files, but not yet pushed:
-- CSS fix for the checklist-row overlap bug on narrow screens
-- Untrack a checklist item (✕ on each row)
-- Budgeting tab (this-year / all-time / estimated-annual, by-year and
-  by-service breakdowns)
-- Quick Checks feature end to end, including its own "remind me" reminder
-  and the matching "Remind me again" swap on overdue maintenance items
-- Full navigation rebuild: five-tab shell (Checklist tab renamed
-  **Services**, and now also where "Log service" lives — it and "Edit
-  vehicle" no longer sit in the persistent header on every tab; Edit moved
-  next to Delete on the Home tab, both solid-color buttons, amber vs. rust),
-  Home tab with the single-action priority engine, All Vehicles context,
-  header vehicle switcher (also now the only add-vehicle entry point,
-  anchored to the header itself so it can't overflow off-screen),
-  onboarding tour + contextual tips
-- Edit a logged service entry (pencil icon next to the existing delete ✕).
-  Editing or deleting an entry now recomputes `currentOdometer` from
-  whichever remaining/edited entry has the highest mileage — same
-  trust-the-correction principle as Edit Vehicle, extended to history edits
-  (previously only `addService` touched the odometer, and only upward).
-- Fixed a horizontal-scroll bug: Quick Checks rows had 4 flex siblings with
-  no wrap fallback and would overflow on ~360px phones; status now lives
-  inside the flexible name column instead of as a rigid sibling.
+in this file. Everything below is finished, tested, and delivered to the
+user as individual files, but not yet pushed:
+- Narrow-screen overlap/horizontal-scroll fixes in the checklist and Quick
+  Checks rows (rigid flex siblings replaced with wrapping layouts)
+- Untrack a checklist item; edit a logged service entry (pencil next to
+  delete) — both `store.js` methods, edit reuses the log-service form
+- Budgeting tab (this-year / all-time / amortized annual estimate, by-year
+  and by-service breakdowns)
+- Quick Checks feature end to end: status-colored check button (not just
+  adjacent text), grace-window staleness, per-item and per-vehicle "remind
+  me" reminders, matching "Remind me again" swap on overdue maintenance
+- Full navigation rebuild: five-tab shell (Checklist renamed **Services**,
+  now also where "Log service" lives, sticky as you scroll), Home tab with
+  the single-action priority engine, All Vehicles context, onboarding tour
+  + contextual tips
+- Header/dashboard rebuilt around vehicle info instead of the app's own
+  name — single persistent header (no separate brand bar), no more
+  dashboard/vehicle-list screen (`#/` redirects to last-viewed scope or a
+  sensible default), switcher is the only way to change vehicles, add one,
+  or reach backup/restore (see `js/app.js` architecture note above)
 Next step is the user pushing these to `main`; nothing here should be
 assumed live until that's confirmed.
 
-Known gaps, not yet built: can't edit a logged entry directly, no
-standalone "update odometer" action separate from logging a service, annual
-mileage estimate never recalculates from actual logged data, no
-save-confirmation toast. The All Vehicles Budget tab shows a by-vehicle
-rollup with tap-through rather than a merged line-item breakdown (mixing
-different vehicles' service types didn't make sense to combine).
+Known gaps, not yet built: no standalone "update odometer" action separate
+from logging a service, annual mileage estimate never recalculates from
+actual logged data, no save-confirmation toast. The All Vehicles Budget tab
+shows a by-vehicle rollup with tap-through rather than a merged line-item
+breakdown (mixing different vehicles' service types didn't make sense to
+combine).
 
 Icons were generated programmatically (Pillow) from the in-app brand mark
 (circle + tick + amber needle on slate background) rather than hand-designed —
