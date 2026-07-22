@@ -19,7 +19,7 @@ export async function decodeVIN(vin) {
     throw new Error("That doesn't look like a valid 17-character VIN.");
   }
 
-  const url = `https://vpic.nhtsa.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(clean)}?format=json`;
+  const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(clean)}?format=json`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error('Could not reach the vehicle lookup service. You can still fill this in manually.');
